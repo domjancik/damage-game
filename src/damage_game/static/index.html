@@ -24,7 +24,7 @@
         radial-gradient(circle at 90% 0%, #8dd2cc 0%, transparent 30%),
         var(--bg);
     }
-    .wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 18px; }
     .top {
       display: grid;
       grid-template-columns: 1fr auto auto auto;
@@ -51,7 +51,7 @@
     button:hover { transform: translateY(-1px); }
     .grid {
       display: grid;
-      grid-template-columns: 1.1fr 1fr 1fr;
+      grid-template-columns: 1.2fr 1fr 1fr;
       gap: 12px;
     }
     .panel {
@@ -77,16 +77,31 @@
       color: #16403c;
       margin-left: 8px;
     }
-    .row {
+    .table {
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      border: 1px solid #e7dac7;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fffef9;
+      margin-bottom: 10px;
+      white-space: pre-wrap;
+    }
+    .player {
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #ecdfcf;
+    }
+    .cards { font-family: "IBM Plex Mono", "Consolas", monospace; font-size: 12px; color: #2f4441; }
+    .emotion-row {
       display: grid;
-      grid-template-columns: 64px 1fr;
+      grid-template-columns: 88px 1fr 40px;
       align-items: center;
-      gap: 8px;
-      margin: 6px 0;
-      font-size: 13px;
+      gap: 6px;
+      margin: 4px 0;
+      font-size: 12px;
     }
     .bar {
-      height: 10px;
+      height: 9px;
       background: #f0e6d8;
       border-radius: 999px;
       overflow: hidden;
@@ -99,7 +114,7 @@
     .event-feed {
       font-family: "IBM Plex Mono", "Consolas", monospace;
       font-size: 12px;
-      height: 420px;
+      height: 460px;
       overflow: auto;
       border: 1px dashed var(--line);
       border-radius: 8px;
@@ -114,6 +129,8 @@
       border-radius: 8px;
       background: #eef7f6;
       font-size: 12px;
+      white-space: pre-wrap;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
     }
     @media (max-width: 980px) {
       .top { grid-template-columns: 1fr 1fr; }
@@ -131,7 +148,8 @@
     </div>
     <div class="grid">
       <div class="panel">
-        <h3>Players <span id="gameLabel" class="badge">none</span></h3>
+        <h3>Table <span id="gameLabel" class="badge">none</span></h3>
+        <div id="table" class="table">No hand loaded.</div>
         <div id="players"></div>
       </div>
       <div class="panel">
@@ -148,14 +166,21 @@
   <script>
     const state = {
       gameId: null,
+      turn: 0,
+      pot: 0,
+      highBet: 0,
+      winners: [],
       players: {},
       events: [],
       source: null
     };
 
+    const EMOTIONS = ["fear", "anger", "shame", "confidence", "tilt"];
+
     const el = {
       games: document.getElementById("games"),
       gameLabel: document.getElementById("gameLabel"),
+      table: document.getElementById("table"),
       players: document.getElementById("players"),
       tokens: document.getElementById("tokens"),
       events: document.getElementById("events"),
@@ -166,9 +191,30 @@
 
     function initPlayer(id) {
       if (!state.players[id]) {
-        state.players[id] = { lives: 3, resolve: 12, tempo: 0, exposure: 0, emotions: { fear: 0, anger: 0, shame: 0, confidence: 0, tilt: 0 } };
+        state.players[id] = {
+          lives: 3,
+          bankroll: 200,
+          current_bet: 0,
+          in_hand: true,
+          hand: [],
+          tempo: 0,
+          exposure: 0,
+          emotions: { fear: 0, anger: 0, shame: 0, confidence: 0, tilt: 0 }
+        };
       }
       return state.players[id];
+    }
+
+    function applyPlayerSnapshot(p) {
+      const x = initPlayer(p.player_id);
+      x.lives = Number(p.lives ?? x.lives);
+      x.bankroll = Number(p.bankroll ?? x.bankroll);
+      x.current_bet = Number(p.current_bet ?? x.current_bet);
+      x.in_hand = Boolean(p.in_hand ?? x.in_hand);
+      x.hand = p.hand || x.hand;
+      x.tempo = Number(p.tempo ?? x.tempo);
+      x.exposure = Number(p.exposure ?? x.exposure);
+      x.emotions = p.emotions || x.emotions;
     }
 
     function applyEvent(evt) {
@@ -176,44 +222,55 @@
       const t = evt.type;
       const p = evt.payload || {};
 
+      if (typeof p.turn === "number") state.turn = p.turn;
+      if (typeof p.pot === "number") state.pot = p.pot;
+      if (typeof p.current_high_bet === "number") state.highBet = p.current_high_bet;
+
       if (t === "game_started") {
         state.players = {};
         const n = p.players || 0;
         for (let i = 1; i <= n; i++) initPlayer("P" + i);
       }
+      if (t === "hand_started") {
+        (p.players || []).forEach(applyPlayerSnapshot);
+      }
       if (t === "action_resolved") {
-        const actor = p.actor_player_id || p.player_id;
-        const target = p.target_player_id;
-        if (actor) initPlayer(actor);
-        if (target) initPlayer(target);
-        const tfx = p.tactical_effect || {};
-        const rdelta = tfx.resolve_delta || {};
-        const tdelta = tfx.tempo_delta || {};
-        Object.keys(rdelta).forEach(pid => initPlayer(pid).resolve += Number(rdelta[pid]));
-        Object.keys(tdelta).forEach(pid => initPlayer(pid).tempo += Number(tdelta[pid]));
-        if (target && p.affective_effect && p.affective_effect.target_emotions) {
-          initPlayer(target).emotions = p.affective_effect.target_emotions;
-        }
+        if (p.player_state) applyPlayerSnapshot(p.player_state);
       }
       if (t === "life_lost" || t === "player_eliminated") {
         const pid = p.player_id;
         if (pid) initPlayer(pid).lives = Number(p.remaining_lives ?? initPlayer(pid).lives);
       }
+      if (t === "showdown") {
+        state.winners = p.winners || [];
+        const rankings = p.rankings || {};
+        Object.entries(rankings).forEach(([pid, info]) => {
+          initPlayer(pid).hand = info.hand || initPlayer(pid).hand;
+        });
+      }
+      if (t === "hand_ended") {
+        (p.players || []).forEach(applyPlayerSnapshot);
+      }
       if (t === "game_ended") {
         const finalState = p.final_state || [];
-        finalState.forEach(s => {
-          state.players[s.player_id] = s;
-        });
+        finalState.forEach(applyPlayerSnapshot);
       }
       if (t === "turn_summary") {
         const ts = p.token_stats || {};
         const byModel = p.token_stats_by_model || {};
-        const modelRows = Object.entries(byModel).map(([k, v]) => `${k}: calls=${v.calls}, avg=${v.avg_total.toFixed(1)}, req_ctx=${v.required_context_capacity.toFixed(0)}`);
+        const modelRows = Object.entries(byModel).map(([k, v]) =>
+          `${k}: calls=${v.calls}, avg=${v.avg_total.toFixed(1)}, req_ctx=${v.required_context_capacity.toFixed(0)}`
+        );
         el.tokens.textContent =
           `calls=${ts.calls || 0}, avg_total=${(ts.avg_total || 0).toFixed(1)}, p95=${(ts.p95_total || 0).toFixed(1)}, required_ctx=${(ts.required_context_capacity || 0).toFixed(0)}\n` +
           modelRows.join("\n") +
           (p.context_warning ? `\nwarning=${p.context_warning}` : "");
       }
+    }
+
+    function pctEmotion(v) {
+      const n = Number(v || 0);
+      return Math.max(0, Math.min(100, (n + 1) * 50));
     }
 
     function renderPlayers() {
@@ -224,21 +281,33 @@
       }
       const rows = ids.map(pid => {
         const p = state.players[pid];
-        const resolvePct = Math.max(0, Math.min(100, (p.resolve / 12) * 100));
-        const fearPct = Math.max(0, Math.min(100, (Number(p.emotions?.fear || 0) + 1) * 50));
+        const emoRows = EMOTIONS.map((k) => {
+          const v = Number(p.emotions?.[k] || 0);
+          return `
+            <div class="emotion-row">
+              <span>${k}</span>
+              <div class="bar"><div style="width:${pctEmotion(v)}%;background:${k === "fear" ? "linear-gradient(90deg,#bf3f2f,#ef8a6d)" : "linear-gradient(90deg,#1b7f79,#6cc6b8)"}"></div></div>
+              <span>${v.toFixed(2)}</span>
+            </div>`;
+        }).join("");
+        const winnerBadge = state.winners.includes(pid) ? " <span class='badge'>winner</span>" : "";
         return `
-          <div style="margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #ecdfcf;">
-            <div><strong>${pid}</strong> lives=${p.lives} resolve=${p.resolve} tempo=${p.tempo} exposure=${p.exposure}</div>
-            <div class="row"><span>Resolve</span><div class="bar"><div style="width:${resolvePct}%"></div></div></div>
-            <div class="row"><span>Fear</span><div class="bar"><div style="width:${fearPct}%;background:linear-gradient(90deg,#bf3f2f,#ef8a6d)"></div></div></div>
+          <div class="player">
+            <div><strong>${pid}</strong>${winnerBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
+            <div class="cards">cards: ${(p.hand || []).join(" ") || "-"}</div>
+            ${emoRows}
           </div>
         `;
       }).join("");
       el.players.innerHTML = rows;
     }
 
+    function renderTable() {
+      el.table.textContent = `turn=${state.turn}\npot=${state.pot}\nhigh_bet=${state.highBet}\nwinners=${state.winners.join(",") || "-"}`;
+    }
+
     function renderEvents() {
-      const tail = state.events.slice(-120);
+      const tail = state.events.slice(-150);
       el.events.innerHTML = tail.map((evt) => {
         const payload = JSON.stringify(evt.payload || {});
         return `<div class="event"><div><strong>${evt.type}</strong></div><div class="meta">${evt.ts || ""}</div><div>${payload}</div></div>`;
@@ -248,6 +317,7 @@
 
     function refreshView() {
       el.gameLabel.textContent = state.gameId || "none";
+      renderTable();
       renderPlayers();
       renderEvents();
     }
@@ -257,9 +327,7 @@
       const data = await r.json();
       const games = data.games || [];
       el.games.innerHTML = games.map(g => `<option value="${g.game_id}">${g.game_id} (${g.event_count})</option>`).join("");
-      if (games.length && !state.gameId) {
-        state.gameId = games[0].game_id;
-      }
+      if (games.length && !state.gameId) state.gameId = games[0].game_id;
       if (state.gameId) el.games.value = state.gameId;
       refreshView();
     }
@@ -268,6 +336,10 @@
       state.gameId = el.games.value;
       state.events = [];
       state.players = {};
+      state.turn = 0;
+      state.pot = 0;
+      state.highBet = 0;
+      state.winners = [];
       if (state.source) { state.source.close(); state.source = null; }
       const r = await fetch(`/api/replay?game_id=${encodeURIComponent(state.gameId)}`);
       const data = await r.json();
@@ -279,6 +351,10 @@
       state.gameId = el.games.value;
       state.events = [];
       state.players = {};
+      state.turn = 0;
+      state.pot = 0;
+      state.highBet = 0;
+      state.winners = [];
       if (state.source) state.source.close();
       state.source = new EventSource(`/api/stream?game_id=${encodeURIComponent(state.gameId)}`);
       state.source.onmessage = (msg) => {

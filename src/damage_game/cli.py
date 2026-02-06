@@ -19,6 +19,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-key", default=os.getenv("DAMAGE_API_KEY"))
     parser.add_argument("--players", type=int, default=4)
     parser.add_argument("--turns", type=int, default=3)
+    parser.add_argument("--seed", type=int, default=int(os.getenv("DAMAGE_SEED", "42")))
+    parser.add_argument("--ante", type=int, default=int(os.getenv("DAMAGE_ANTE", "10")))
+    parser.add_argument("--min-raise", type=int, default=int(os.getenv("DAMAGE_MIN_RAISE", "10")))
+    parser.add_argument("--starting-bankroll", type=int, default=int(os.getenv("DAMAGE_STARTING_BANKROLL", "200")))
     parser.add_argument("--context-window", type=int, default=8192)
     parser.add_argument("--log-dir", default=os.getenv("DAMAGE_LOG_DIR", "runs"))
     parser.add_argument("--probe", action="store_true", help="Only probe model connectivity")
@@ -47,6 +51,10 @@ def main() -> None:
             api_key=args.api_key,
             players=args.players,
             turns=args.turns,
+            seed=args.seed,
+            ante=args.ante,
+            min_raise=args.min_raise,
+            starting_bankroll=args.starting_bankroll,
             model_context_window=args.context_window,
             log_dir=args.log_dir,
         )

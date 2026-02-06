@@ -25,6 +25,12 @@ uv run --python 3.11 -m damage_game.cli --probe --base-url http://192.168.1.103:
 
 Run logs are written under `runs/` and include per-call token usage plus required context capacity estimates.
 
+Poker-like stakes tuning:
+
+```powershell
+uv run --python 3.11 -m damage_game.cli --players 4 --turns 5 --seed 42 --ante 10 --min-raise 10 --starting-bankroll 200
+```
+
 ## Replay logs
 
 ```powershell

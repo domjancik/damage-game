@@ -6,11 +6,11 @@ from typing import Any
 
 
 class ActionKind(str, Enum):
-    PLAY_CARD = "play_card"
-    ACTIVATE = "activate"
-    SPEAK = "speak"
+    FOLD = "fold"
+    CHECK = "check"
+    CALL = "call"
+    RAISE = "raise"
     PASS = "pass"
-    REACTION = "reaction"
 
 
 class KineticIntent(str, Enum):
@@ -99,7 +99,14 @@ class ActionEnvelope:
 
     @classmethod
     def from_obj(cls, obj: dict[str, Any], player_id: str) -> "ActionEnvelope":
-        kind = ActionKind(obj.get("kind", "pass"))
+        raw_kind = str(obj.get("kind", "pass")).strip().lower().replace("-", "_").replace(" ", "_")
+        try:
+            kind = ActionKind(raw_kind)
+        except Exception:
+            if raw_kind in {"play_card", "activate", "reaction"}:
+                kind = ActionKind.RAISE
+            else:
+                kind = ActionKind.PASS
         attack_plan = None
         if isinstance(obj.get("attack_plan"), dict):
             try:
@@ -128,7 +135,10 @@ class EmotionState:
 class PlayerState:
     player_id: str
     lives: int = 3
-    resolve: int = 12
+    bankroll: int = 200
+    current_bet: int = 0
+    in_hand: bool = True
+    hand: list[str] = field(default_factory=list)
     tempo: int = 0
     exposure: int = 0
     emotions: EmotionState = field(default_factory=EmotionState)
@@ -154,10 +164,12 @@ class ActionValidationError(ValueError):
 
 
 def validate_action(action: ActionEnvelope) -> None:
-    is_attack = action.kind in {ActionKind.PLAY_CARD, ActionKind.ACTIVATE, ActionKind.REACTION}
-    if not is_attack:
+    if action.kind != ActionKind.RAISE:
         return
 
-    is_non_trivial = bool(action.payload.get("non_trivial", True))
-    if is_non_trivial and action.attack_plan is None:
-        raise ActionValidationError("non-trivial attack actions require attack_plan")
+    if action.attack_plan is None:
+        raise ActionValidationError("raise actions require attack_plan")
+
+    amount = int(action.payload.get("amount", 0))
+    if amount <= 0:
+        raise ActionValidationError("raise amount must be > 0")
