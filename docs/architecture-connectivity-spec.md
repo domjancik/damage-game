@@ -92,6 +92,7 @@ Define how engine, agent runtime, provider routing, data stores, and web visuali
 ## 6.4 API Surface
 - implemented:
   - `GET /api/games`
+  - `GET /api/tournaments`
   - `GET /api/replay?game_id=...`
   - `GET /api/stream?game_id=...` (SSE)
 - planned:

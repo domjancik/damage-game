@@ -1,6 +1,6 @@
 # Schema Specification
 
-Version: 0.4 (Implemented + Planned Extensions)
+Version: 0.5 (Implemented + Planned Extensions)
 Status: Draft
 
 ## 1. Purpose
@@ -182,6 +182,46 @@ Validation:
 ## 5.18 `avatar_selected`
 - `player_id: string`
 - `avatar_id: string`
+
+## 5.19 Tournament Events (Implemented)
+## `tournament_started`
+- `tournament_id: string`
+- `entrants: int`
+- `seat_format: int` (6 or 8)
+- `turns_per_game: int`
+- `advance_per_table: int`
+
+## `round_started`
+- `tournament_id: string`
+- `round: int`
+- `active_players: string[]`
+- `table_count: int`
+- `ante: int`
+
+## `table_spawned`
+- `tournament_id: string`
+- `round: int`
+- `table_id: string`
+- `players: string[]`
+- `seat_count: int`
+- `ante: int`
+
+## `table_result`
+- `tournament_id: string`
+- `round: int`
+- `table_id: string`
+- `game_id: string`
+- `ranking: string[]`
+- `advanced: string[]`
+
+## `round_ended`
+- `tournament_id: string`
+- `round: int`
+- `advanced_players: string[]`
+
+## `tournament_ended`
+- `tournament_id: string`
+- `champion_player_id: string`
 
 ## 6. Replay/Visualizer API Contracts
 - `GET /api/games` -> `{games:[{game_id,event_count,modified_ts}]}`

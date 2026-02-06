@@ -20,12 +20,22 @@ def log_path(log_dir: str, game_id: str) -> Path:
 
 
 def list_game_logs(log_dir: str) -> list[GameLogInfo]:
+    return list_logs_with_prefix(log_dir, "game_")
+
+
+def list_tournament_logs(log_dir: str) -> list[GameLogInfo]:
+    return list_logs_with_prefix(log_dir, "tournament_")
+
+
+def list_logs_with_prefix(log_dir: str, prefix: str) -> list[GameLogInfo]:
     root = Path(log_dir)
     if not root.exists():
         return []
     out: list[GameLogInfo] = []
     for path in root.glob("*.events.jsonl"):
         game_id = path.name.replace(".events.jsonl", "")
+        if not game_id.startswith(prefix):
+            continue
         event_count = 0
         with path.open("r", encoding="utf-8") as f:
             for _ in f:
@@ -69,4 +79,3 @@ def tail_events(log_dir: str, game_id: str, poll_interval_s: float = 0.4) -> Ite
             line = line.strip()
             if line:
                 yield json.loads(line)
-

@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .replay import list_game_logs, load_events, log_path
+from .replay import list_game_logs, list_tournament_logs, load_events, log_path
 
 
 class VisualizerServer:
@@ -45,6 +45,9 @@ class VisualizerServer:
                 if path == "/api/games":
                     self._send_games(log_dir)
                     return
+                if path == "/api/tournaments":
+                    self._send_tournaments(log_dir)
+                    return
                 if path == "/api/replay":
                     self._send_replay(log_dir, parse_qs(parsed.query))
                     return
@@ -77,6 +80,20 @@ class VisualizerServer:
                             "modified_ts": g.modified_ts,
                         }
                         for g in games
+                    ]
+                }
+                self._send_json(payload)
+
+            def _send_tournaments(self, run_dir: str) -> None:
+                tournaments = list_tournament_logs(run_dir)
+                payload = {
+                    "tournaments": [
+                        {
+                            "tournament_id": t.game_id,
+                            "event_count": t.event_count,
+                            "modified_ts": t.modified_ts,
+                        }
+                        for t in tournaments
                     ]
                 }
                 self._send_json(payload)

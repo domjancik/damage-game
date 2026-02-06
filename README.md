@@ -31,6 +31,12 @@ Poker-like stakes tuning:
 uv run --python 3.11 -m damage_game.cli --players 4 --turns 5 --seed 42 --ante 10 --min-raise 10 --starting-bankroll 200
 ```
 
+Tournament mode (single-elimination style, 6-max/8-max tables):
+
+```powershell
+uv run --python 3.11 -m damage_game.tournament_cli --base-url http://192.168.1.103:1234/v1 --model qwen2.5-14b-instruct-mlx --fallback-models mistral-small-3.2-24b-instruct-2506-mlx --entrants 8 --seat-format 6 --turns 2 --advance-per-table 1
+```
+
 Per-player model assignment:
 
 ```powershell

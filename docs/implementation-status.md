@@ -20,6 +20,11 @@ Updated: 2026-02-06
   - model fallback routing
   - per-player model assignment (`P1=...`) with warning/fallback
   - robust parsing fallback for malformed/null payloads
+- Tournament runtime:
+  - `damage_game.tournament_cli` for multi-round progression
+  - 6-max or 8-max table assignment
+  - per-table advancement (`advance_per_table`) with escalating ante tiers
+  - tournament event log (`tournament_*.events.jsonl`) including table spawn/results
 - Observability:
   - JSONL event log per game under `runs/`
   - per-call usage + context-capacity estimation
@@ -35,6 +40,8 @@ Updated: 2026-02-06
 ## 2. Event Coverage (Current)
 - core:
   - `game_started`, `hand_started`, `phase_changed`, `showdown`, `hand_ended`, `game_ended`
+- tournament:
+  - `tournament_started`, `round_started`, `table_spawned`, `table_result`, `round_ended`, `tournament_ended`
 - actions:
   - `action_submitted`, `action_resolved`, `action_rejected`
 - affect:
@@ -50,6 +57,7 @@ Updated: 2026-02-06
 
 ## 3. Current CLI Surface
 - simulation: `uv run --python 3.11 -m damage_game.cli`
+- tournament: `uv run --python 3.11 -m damage_game.tournament_cli`
 - replay list/play: `uv run --python 3.11 -m damage_game.replay_cli`
 - visualizer server: `uv run --python 3.11 -m damage_game.visualizer_cli`
 - per-player model assignment:

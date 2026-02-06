@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import uuid
 from datetime import datetime, timezone
 from dataclasses import dataclass
 
@@ -35,6 +36,7 @@ class SimulatorConfig:
     model_context_window: int = 8192
     fallback_models: list[str] | None = None
     player_models: dict[str, str] | None = None
+    player_ids: list[str] | None = None
     log_dir: str = "runs"
     seed: int = 42
     ante: int = 10
@@ -53,7 +55,8 @@ class DamageSimulator:
                 api_key=cfg.api_key,
             )
         )
-        self.game_id = datetime.now(timezone.utc).strftime("game_%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        self.game_id = f"game_{stamp}_{uuid.uuid4().hex[:6]}"
         self.event_logger = EventLogger.create(cfg.log_dir, self.game_id)
         self.token_monitor = TokenMonitor()
         self.model_router = ModelRouter(
@@ -64,23 +67,28 @@ class DamageSimulator:
         )
         self.player_models = {k.upper(): v for k, v in (cfg.player_models or {}).items()}
         self.available_models: set[str] = set()
+        configured_ids = [x.strip() for x in (cfg.player_ids or []) if x.strip()]
+        if configured_ids:
+            player_ids = configured_ids
+        else:
+            player_ids = [f"P{i + 1}" for i in range(cfg.players)]
         self.players = [
             PlayerState(
-                player_id=f"P{i + 1}",
+                player_id=player_id,
                 bankroll=cfg.starting_bankroll,
                 will=self.rng.randint(50, 75),
                 skill_affect=self.rng.randint(45, 80),
             )
-            for i in range(cfg.players)
+            for player_id in player_ids
         ]
         self.pot = 0
         self.current_high_bet = 0
         self._prime_model_router()
 
-    def run(self) -> None:
+    def run(self) -> dict:
         print(
             f"Starting simulation game_id={self.game_id} model={self.cfg.model}, "
-            f"players={self.cfg.players}, turns={self.cfg.turns}, seed={self.cfg.seed}"
+            f"players={len(self.players)}, turns={self.cfg.turns}, seed={self.cfg.seed}"
         )
         if self.player_models:
             print("Per-player model assignment:")
@@ -91,6 +99,7 @@ class DamageSimulator:
             "game_started",
             {
                 "players": self.cfg.players,
+                "player_ids": [p.player_id for p in self.players],
                 "turns": self.cfg.turns,
                 "primary_model": self.cfg.model,
                 "fallback_models": self.cfg.fallback_models or [],
@@ -116,6 +125,25 @@ class DamageSimulator:
             },
         )
         self._print_final_state()
+        ranked = sorted(
+            (self._public_player_state(p) for p in self.players),
+            key=lambda x: (int(x["lives"]), int(x["bankroll"]), int(x["tempo"])),
+            reverse=True,
+        )
+        top_key = None
+        if ranked:
+            top = ranked[0]
+            top_key = (int(top["lives"]), int(top["bankroll"]), int(top["tempo"]))
+        winners = []
+        for item in ranked:
+            k = (int(item["lives"]), int(item["bankroll"]), int(item["tempo"]))
+            if top_key is not None and k == top_key:
+                winners.append(item["player_id"])
+        return {
+            "game_id": self.game_id,
+            "final_state": ranked,
+            "winners": winners,
+        }
 
     def _run_hand(self, turn: int) -> None:
         participants = [p for p in self.players if p.lives > 0]
