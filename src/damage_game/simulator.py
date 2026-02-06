@@ -216,6 +216,15 @@ class DamageSimulator:
         max_output_tokens = self.token_monitor.recommended_max_output_tokens(
             self.cfg.model_context_window
         )
+        self.event_logger.write(
+            "thinking",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "status": "start",
+                "model": selected_model,
+            },
+        )
         try:
             response = self.client.chat_json(
                 system_prompt=system_prompt,
@@ -232,6 +241,10 @@ class DamageSimulator:
                     "reason": "provider_failure",
                     "detail": str(exc),
                 },
+            )
+            self.event_logger.write(
+                "thinking",
+                {"turn": turn, "player_id": actor.player_id, "status": "end", "outcome": "provider_failure"},
             )
             return ActionEnvelope.from_obj({"kind": "call"}, player_id=actor.player_id)
 
@@ -271,6 +284,10 @@ class DamageSimulator:
                 "player_id": actor.player_id,
                 "action": self._serialize_action(action),
             },
+        )
+        self.event_logger.write(
+            "thinking",
+            {"turn": turn, "player_id": actor.player_id, "status": "end", "outcome": "action_submitted"},
         )
         return action
 
@@ -569,4 +586,3 @@ def evaluate_hand(cards: list[str]) -> tuple[int, tuple[int, ...], str]:
         kickers = tuple(r for r in ranks if r != pair)
         return (1, (pair, *kickers), "pair")
     return (0, tuple(ranks), "high_card")
-

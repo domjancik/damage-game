@@ -77,6 +77,16 @@
       color: #16403c;
       margin-left: 8px;
     }
+    .thinking {
+      background: #ffe4ba;
+      color: #7a3f00;
+      animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0% { opacity: 0.7; }
+      50% { opacity: 1; }
+      100% { opacity: 0.7; }
+    }
     .table {
       font-family: "IBM Plex Mono", "Consolas", monospace;
       border: 1px solid #e7dac7;
@@ -212,6 +222,7 @@
           bankroll: 200,
           current_bet: 0,
           in_hand: true,
+          thinking: false,
           hand: [],
           tempo: 0,
           exposure: 0,
@@ -227,6 +238,7 @@
       x.bankroll = Number(p.bankroll ?? x.bankroll);
       x.current_bet = Number(p.current_bet ?? x.current_bet);
       x.in_hand = Boolean(p.in_hand ?? x.in_hand);
+      x.thinking = Boolean(p.thinking ?? x.thinking);
       x.hand = p.hand || x.hand;
       x.tempo = Number(p.tempo ?? x.tempo);
       x.exposure = Number(p.exposure ?? x.exposure);
@@ -252,6 +264,13 @@
       }
       if (t === "action_resolved") {
         if (p.player_state) applyPlayerSnapshot(p.player_state);
+      }
+      if (t === "thinking") {
+        const pid = p.player_id;
+        if (pid) {
+          const pl = initPlayer(pid);
+          pl.thinking = p.status === "start";
+        }
       }
       if (t === "life_lost" || t === "player_eliminated") {
         const pid = p.player_id;
@@ -307,9 +326,10 @@
             </div>`;
         }).join("");
         const winnerBadge = state.winners.includes(pid) ? " <span class='badge'>winner</span>" : "";
+        const thinkingBadge = p.thinking ? " <span class='badge thinking'>thinking...</span>" : "";
         return `
           <div class="player">
-            <div><strong>${pid}</strong>${winnerBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
+            <div><strong>${pid}</strong>${winnerBadge}${thinkingBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="cards">cards: ${(p.hand || []).join(" ") || "-"}</div>
             ${emoRows}
           </div>
