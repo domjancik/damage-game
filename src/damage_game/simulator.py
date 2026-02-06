@@ -204,6 +204,7 @@ class DamageSimulator:
             "Choose one legal action from legal_actions. "
             "Schema: {kind, payload, attack_plan, reasoning_summary}. "
             "Use kind in [fold, check, call, raise]. "
+            "reasoning_summary must be one short sentence (max 20 words) describing intent for observers. "
             "If kind is raise, payload.amount must be an integer > 0 and attack_plan is required with: "
             "kinetic_intent, emotional_intent, manipulation_plan, delivery_channel, target_player_id, "
             "expected_behavior_shift, confidence. "
@@ -276,6 +277,8 @@ class DamageSimulator:
                 action = ActionEnvelope.from_obj({"kind": "check"}, player_id=actor.player_id)
         if action.kind.value not in legal:
             action = ActionEnvelope.from_obj({"kind": legal[0]}, player_id=actor.player_id)
+        if not action.reasoning_summary.strip():
+            action.reasoning_summary = self._fallback_reasoning_summary(action)
 
         self.event_logger.write(
             "action_submitted",
@@ -287,7 +290,13 @@ class DamageSimulator:
         )
         self.event_logger.write(
             "thinking",
-            {"turn": turn, "player_id": actor.player_id, "status": "end", "outcome": "action_submitted"},
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "status": "end",
+                "outcome": "action_submitted",
+                "summary": action.reasoning_summary[:220],
+            },
         )
         return action
 
@@ -383,8 +392,10 @@ class DamageSimulator:
             payout = share + (1 if idx < remainder else 0)
             w.bankroll += payout
 
+        life_losses = 0
         for p in participants:
-            if p.player_id not in winner_ids:
+            if p.player_id not in winner_ids and p.in_hand:
+                life_losses += 1
                 p.lives -= 1
                 p.exposure = min(10, p.exposure + 1)
                 if p.lives <= 0:
@@ -394,12 +405,19 @@ class DamageSimulator:
                     {"turn": turn, "player_id": p.player_id, "remaining_lives": p.lives},
                 )
 
+            elif p.player_id not in winner_ids and not p.in_hand:
+                # Folding exits life risk for this hand; chip loss is already paid into the pot.
+                self.event_logger.write(
+                    "fold_saved_life",
+                    {"turn": turn, "player_id": p.player_id},
+                )
         self.event_logger.write(
             "showdown",
             {
                 "turn": turn,
                 "pot": self.pot,
                 "winners": list(winner_ids),
+                "life_losses": life_losses,
                 "rankings": rankings,
             },
         )
@@ -412,7 +430,7 @@ class DamageSimulator:
         )
         print(
             f"Showdown winners={','.join(sorted(winner_ids))} pot={self.pot} "
-            f"losers_life_loss={len(participants) - len(winners)}"
+            f"losers_life_loss={life_losses}"
         )
 
     def _log_turn_summary(self, turn: int) -> None:
@@ -543,6 +561,24 @@ class DamageSimulator:
             "exposure": player.exposure,
             "emotions": self._emotion_dict(player.emotions),
         }
+
+    @staticmethod
+    def _fallback_reasoning_summary(action: ActionEnvelope) -> str:
+        if action.kind == ActionKind.FOLD:
+            return "Risk too high for current hand and pot odds."
+        if action.kind == ActionKind.CHECK:
+            return "No pressure needed; preserve bankroll and observe opponents."
+        if action.kind == ActionKind.CALL:
+            return "Calling to continue with current equity and pot odds."
+        if action.kind == ActionKind.RAISE:
+            ap = action.attack_plan
+            if ap:
+                return (
+                    f"Applying pressure via raise to induce {ap.emotional_intent.value} "
+                    f"and shift target behavior."
+                )
+            return "Raising to pressure opponents and grow expected value."
+        return "Taking a conservative default line."
 
 
 def evaluate_hand(cards: list[str]) -> tuple[int, tuple[int, ...], str]:

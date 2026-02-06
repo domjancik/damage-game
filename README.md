@@ -31,6 +31,10 @@ Poker-like stakes tuning:
 uv run --python 3.11 -m damage_game.cli --players 4 --turns 5 --seed 42 --ante 10 --min-raise 10 --starting-bankroll 200
 ```
 
+Life risk rule:
+- `fold` avoids life loss for that hand (chips committed stay in pot).
+- Players who stay to showdown and lose lose 1 Life.
+
 ## Replay logs
 
 ```powershell
