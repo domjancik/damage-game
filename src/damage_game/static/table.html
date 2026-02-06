@@ -123,6 +123,15 @@
       font-size: 13px;
       min-width: 200px;
     }
+    .board-cards {
+      position: absolute;
+      left: 50%;
+      top: 58%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 5px;
+      z-index: 2;
+    }
     .seat {
       position: absolute;
       width: 220px;
@@ -366,11 +375,12 @@
       <div class="panel">
         <div class="table-stage" id="tableStage">
           <div class="hud hud-top-left" id="hudTopLeft"></div>
-          <div class="hud hud-top-right" id="hudTopRight"></div>
-          <div class="hud hud-bottom-left" id="hudBottomLeft"></div>
-          <div class="hud hud-bottom-right" id="hudBottomRight"></div>
-          <div class="center" id="center">turn=0 | pot=0 | high_bet=0 | winners=-</div>
-        </div>
+        <div class="hud hud-top-right" id="hudTopRight"></div>
+        <div class="hud hud-bottom-left" id="hudBottomLeft"></div>
+        <div class="hud hud-bottom-right" id="hudBottomRight"></div>
+        <div class="center" id="center">turn=0 | pot=0 | high_bet=0 | winners=-</div>
+        <div class="board-cards" id="boardCards"></div>
+      </div>
       </div>
       <div class="panel">
         <div class="log" id="events"></div>
@@ -398,6 +408,7 @@
       toggleLog: document.getElementById("toggleLog"),
       cursorLabel: document.getElementById("cursorLabel"),
       center: document.getElementById("center"),
+      boardCards: document.getElementById("boardCards"),
       stage: document.getElementById("tableStage"),
       hudTopLeft: document.getElementById("hudTopLeft"),
       hudTopRight: document.getElementById("hudTopRight"),
@@ -669,8 +680,7 @@
       );
     }
     function renderStage() {
-      const board = state.communityCards.length ? state.communityCards.join(" ") : "-";
-      el.center.textContent = `pot=${state.pot} | style=${state.cardStyle} | board=${board}`;
+      el.center.textContent = `pot=${state.pot} | style=${state.cardStyle}`;
       el.hudTopLeft.innerHTML = `<div>turn ${state.turn}</div><div>high bet ${state.highBet}</div>`;
       el.hudTopRight.innerHTML = `<div>winners</div><div>${state.winners.join(",") || "-"}</div>`;
       const ids = Object.keys(state.players).sort();
@@ -679,6 +689,14 @@
       const thinking = ids.filter((pid) => state.players[pid].thinking).join(",") || "-";
       el.hudBottomLeft.innerHTML = `<div>alive ${alive}/${ids.length}</div><div>events ${state.cursor}/${state.replayEvents.length}</div>`;
       el.hudBottomRight.innerHTML = `<div>thinking</div><div>${thinking}</div>`;
+      const boardCards = Array.isArray(state.communityCards) ? state.communityCards.slice(0, 5) : [];
+      el.boardCards.innerHTML = boardCards
+        .map((c) => `<canvas class="card-canvas" width="34" height="48" data-card="${String(c)}"></canvas>`)
+        .join("");
+      el.boardCards.style.display = boardCards.length ? "flex" : "none";
+      el.boardCards.querySelectorAll(".card-canvas").forEach((node) => {
+        drawCardFace(node, node.getAttribute("data-card") || "");
+      });
       el.stage.querySelectorAll(".seat").forEach((n) => n.remove());
       const pos = seatPositions(ids.length);
       ids.forEach((pid) => {
