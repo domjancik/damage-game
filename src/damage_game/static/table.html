@@ -294,14 +294,13 @@
       gap: 4px;
       flex-wrap: wrap;
     }
-    .card {
-      background: var(--card);
-      color: #2c2014;
-      border: 1px solid #d8c0a2;
+    .card-canvas {
+      width: 34px;
+      height: 48px;
       border-radius: 4px;
-      padding: 2px 6px;
-      font-family: "IBM Plex Mono", "Consolas", monospace;
-      font-size: 11px;
+      border: 1px solid #d8c0a2;
+      background: var(--card);
+      image-rendering: pixelated;
     }
     .log {
       height: 640px;
@@ -605,6 +604,40 @@
       if (p.resistance_bonus > 8) { c.fillStyle = "#ffd97d"; c.fillRect(8, 26, 4, 4); }
       if (p.tempo > 1) { c.fillStyle = "#a6f4da"; c.fillRect(36, 26, 4, 4); }
     }
+    function parseCardCode(code) {
+      const text = String(code || "").trim().toUpperCase();
+      if (text.length < 2) return { rank: "?", suit: "?" };
+      return { rank: text.slice(0, -1), suit: text.slice(-1) };
+    }
+    function suitVisual(suit) {
+      if (suit === "H") return { symbol: "♥", color: "#c13f36" };
+      if (suit === "D") return { symbol: "♦", color: "#cf5a37" };
+      if (suit === "S") return { symbol: "♠", color: "#1f2d39" };
+      return { symbol: "♣", color: "#1f5f41" };
+    }
+    function drawCardFace(canvas, code) {
+      const ctx = canvas.getContext("2d");
+      ctx.imageSmoothingEnabled = false;
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#fffdf6";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "#d3c3ad";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(1, 1, w - 2, h - 2);
+      const card = parseCardCode(code);
+      const suit = suitVisual(card.suit);
+      ctx.fillStyle = suit.color;
+      ctx.font = "bold 9px monospace";
+      ctx.fillText(card.rank, 3, 10);
+      ctx.font = "bold 10px monospace";
+      ctx.fillText(suit.symbol, 3, 20);
+      ctx.font = "bold 16px monospace";
+      ctx.fillText(suit.symbol, 10, 31);
+      ctx.font = "bold 8px monospace";
+      ctx.fillText(card.rank, w - 8, h - 3);
+    }
     function emotionRows(p) {
       const conf = [
         { key: "fear", emoji: "😨", label: "fear", color: "linear-gradient(90deg,#c34d39,#ff9a7c)" },
@@ -673,9 +706,12 @@
             </div>
             ${bubble}
             <div class="meta">${p.reaction || "-"}</div>
-            <div class="cards">${(p.hand || []).map((c) => `<span class="card">${c}</span>`).join("")}</div>`;
+            <div class="cards">${(p.hand || []).map((c) => `<canvas class="card-canvas" width="34" height="48" data-card="${String(c)}"></canvas>`).join("")}</div>`;
         el.stage.appendChild(seat);
         drawSprite(seat.querySelector("canvas"), p, pid);
+        seat.querySelectorAll(".card-canvas").forEach((node) => {
+          drawCardFace(node, node.getAttribute("data-card") || "");
+        });
       });
     }
     function renderEvents() {
