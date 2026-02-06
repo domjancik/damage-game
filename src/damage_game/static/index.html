@@ -114,14 +114,30 @@
     .event-feed {
       font-family: "IBM Plex Mono", "Consolas", monospace;
       font-size: 12px;
-      height: 460px;
       overflow: auto;
       border: 1px dashed var(--line);
       border-radius: 8px;
       padding: 8px;
       background: #fffdf8;
+      flex: 1 1 auto;
+      min-height: 240px;
+    }
+    #eventPanel {
+      display: flex;
+      flex-direction: column;
     }
     .event { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #eee2d3; }
+    .event:last-of-type { margin-bottom: 0; }
+    .event pre {
+      margin: 4px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .j-key { color: #0c5e57; font-weight: 600; }
+    .j-str { color: #904314; }
+    .j-num { color: #255aa8; }
+    .j-bool { color: #7a2f84; }
+    .j-null { color: #666; font-style: italic; }
     .meta { color: var(--muted); font-size: 11px; }
     .token {
       margin-top: 6px;
@@ -156,7 +172,7 @@
         <h3>Token Monitor</h3>
         <div id="tokens" class="token">No data yet.</div>
       </div>
-      <div class="panel">
+      <div class="panel" id="eventPanel">
         <h3>Event Feed</h3>
         <div id="events" class="event-feed"></div>
       </div>
@@ -308,9 +324,26 @@
 
     function renderEvents() {
       const tail = state.events.slice(-150);
+      const colorize = (obj) => {
+        const escaped = JSON.stringify(obj || {}, null, 2)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        return escaped.replace(
+          /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?=:))|("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*")|(\b-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?\b)|(\btrue\b|\bfalse\b)|(\bnull\b)/g,
+          (m, key, str, num, bool, nll) => {
+            if (key) return `<span class="j-key">${key}</span>`;
+            if (str) return `<span class="j-str">${str}</span>`;
+            if (num) return `<span class="j-num">${num}</span>`;
+            if (bool) return `<span class="j-bool">${bool}</span>`;
+            if (nll) return `<span class="j-null">${nll}</span>`;
+            return m;
+          }
+        );
+      };
       el.events.innerHTML = tail.map((evt) => {
-        const payload = JSON.stringify(evt.payload || {});
-        return `<div class="event"><div><strong>${evt.type}</strong></div><div class="meta">${evt.ts || ""}</div><div>${payload}</div></div>`;
+        const payload = colorize(evt.payload || {});
+        return `<div class="event"><div><strong>${evt.type}</strong></div><div class="meta">${evt.ts || ""}</div><pre>${payload}</pre></div>`;
       }).join("");
       el.events.scrollTop = el.events.scrollHeight;
     }
@@ -374,4 +407,3 @@
   </script>
 </body>
 </html>
-
