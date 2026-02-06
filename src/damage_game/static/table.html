@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Damage Pixel Table</title>
+  <style>
+    :root {
+      --bg: #f2e9dc;
+      --ink: #11211d;
+      --muted: #566e68;
+      --line: #ccb9a3;
+      --felt-a: #1f8a73;
+      --felt-b: #2fa287;
+      --alert: #c24a2f;
+      --chip: #f7c56f;
+      --card: #fffdf7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 10%, #ffd2a2 0%, transparent 27%),
+        radial-gradient(circle at 84% 12%, #9de0d7 0%, transparent 25%),
+        var(--bg);
+      color: var(--ink);
+      font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+    }
+    .wrap { max-width: 1320px; margin: 0 auto; padding: 16px; }
+    .top {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+    select, button, input[type="range"] {
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0 12px;
+      font: inherit;
+      background: #fff9ef;
+      color: var(--ink);
+    }
+    button {
+      background: linear-gradient(120deg, #cf5937, #e17b52);
+      color: #fff;
+      border: none;
+      cursor: pointer;
+    }
+    .mini {
+      margin: 8px 0 10px;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+    }
+    .mini .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+    }
+    .speed {
+      display: inline-grid;
+      grid-template-columns: auto 120px auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .speed input[type="range"] { width: 120px; height: 22px; }
+    .layout {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 12px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fffaf2;
+      padding: 10px;
+    }
+    .table-stage {
+      position: relative;
+      min-height: 640px;
+      border-radius: 14px;
+      background:
+        radial-gradient(ellipse at center, var(--felt-b) 0%, var(--felt-a) 100%);
+      border: 6px solid #5c3f28;
+      box-shadow: inset 0 0 0 3px #8b6040;
+      overflow: hidden;
+    }
+    .hud {
+      position: absolute;
+      min-width: 180px;
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 10px;
+      background: rgba(7, 28, 24, 0.62);
+      color: #f0fff8;
+      padding: 8px;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      z-index: 2;
+      backdrop-filter: blur(1px);
+    }
+    .hud ul {
+      margin: 0;
+      padding-left: 16px;
+    }
+    .hud-top-left { left: 12px; top: 10px; }
+    .hud-top-right { right: 12px; top: 10px; text-align: right; }
+    .hud-bottom-left { left: 12px; bottom: 10px; }
+    .hud-bottom-right { right: 12px; bottom: 10px; text-align: right; }
+    .center {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      padding: 10px 16px;
+      border-radius: 10px;
+      background: rgba(255, 249, 237, 0.92);
+      border: 1px solid #d9c0a5;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 13px;
+      min-width: 200px;
+    }
+    .seat {
+      position: absolute;
+      width: 260px;
+      padding: 8px;
+      border: 1px solid rgba(255,255,255,0.25);
+      border-radius: 10px;
+      background: rgba(10, 33, 28, 0.32);
+      color: #f6fff8;
+      backdrop-filter: blur(1px);
+      font-size: 12px;
+    }
+    .seat.folded { opacity: 0.55; }
+    .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+    }
+    .badge {
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: rgba(255,255,255,0.18);
+    }
+    .think {
+      background: #ffd59a;
+      color: #4d2a00;
+      animation: pulse 1s infinite ease-in-out;
+    }
+    .winner { background: #ffe7ad; color: #4f3403; }
+    @keyframes pulse {
+      0% { opacity: 0.75; }
+      50% { opacity: 1; }
+      100% { opacity: 0.75; }
+    }
+    .meta {
+      margin-top: 4px;
+      color: #d9f2ea;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+    }
+    .sprite-row {
+      display: grid;
+      grid-template-columns: 50px 1fr;
+      gap: 8px;
+      margin-top: 6px;
+      align-items: center;
+    }
+    .sprite {
+      width: 48px;
+      height: 48px;
+      border: 1px solid rgba(255,255,255,0.4);
+      border-radius: 4px;
+      image-rendering: pixelated;
+      background: #173a31;
+    }
+    .bars { display: grid; gap: 4px; }
+    .emotion-row {
+      display: grid;
+      grid-template-columns: 16px 44px 1fr 34px;
+      gap: 4px;
+      align-items: center;
+      font-size: 10px;
+      color: #ddf6ee;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+    }
+    .emotion-icon {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.35);
+      background: rgba(255,255,255,0.15);
+      text-align: center;
+      line-height: 12px;
+      font-size: 9px;
+      color: #fff;
+    }
+    .bar {
+      height: 7px;
+      background: rgba(255,255,255,0.24);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar > div { height: 100%; background: linear-gradient(90deg, #f8c06b, #ffe093); }
+    .cards {
+      margin-top: 6px;
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    .card {
+      background: var(--card);
+      color: #2c2014;
+      border: 1px solid #d8c0a2;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 11px;
+    }
+    .log {
+      height: 640px;
+      overflow: auto;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fffdf7;
+      padding: 8px;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+    }
+    .ev { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #f0e4d6; }
+    .ev pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; }
+    .j-k { color: #0e5b54; font-weight: 600; }
+    .j-s { color: #8a4714; }
+    .j-n { color: #205ea5; }
+    .j-b { color: #6f2f8c; }
+    .j-0 { color: #666; font-style: italic; }
+    .home { color: var(--muted); font-size: 12px; margin-left: 4px; }
+    @media (max-width: 1080px) {
+      .top { grid-template-columns: 1fr 1fr; }
+      .layout { grid-template-columns: 1fr; }
+      .table-stage { min-height: 820px; }
+      .seat { width: 230px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <select id="games"></select>
+      <button id="load">Load Replay</button>
+      <button id="live">Live Stream</button>
+      <button id="prev">Prev</button>
+      <button id="next">Next</button>
+      <button id="play">Play</button>
+    </div>
+    <div class="mini">
+      <div class="row">
+        <div>
+          <input id="cursor" type="range" min="0" max="0" value="0">
+          <span id="cursorLabel">event 0 / 0</span>
+        </div>
+        <div class="speed">
+          <span>speed</span>
+          <input id="speed" type="range" min="1" max="8" value="3">
+          <span id="speedLabel">1.0x</span>
+        </div>
+      </div>
+      <a class="home" href="/">switch to dashboard view</a>
+    </div>
+    <div class="layout">
+      <div class="panel">
+        <div class="table-stage" id="tableStage">
+          <div class="hud hud-top-left" id="hudTopLeft"></div>
+          <div class="hud hud-top-right" id="hudTopRight"></div>
+          <div class="hud hud-bottom-left" id="hudBottomLeft"></div>
+          <div class="hud hud-bottom-right" id="hudBottomRight"></div>
+          <div class="center" id="center">turn=0 | pot=0 | high_bet=0 | winners=-</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="log" id="events"></div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const state = {
+      gameId: null, turn: 0, pot: 0, highBet: 0, winners: [],
+      players: {}, events: [], replayEvents: [], cursor: 0,
+      source: null, playing: false, timer: null
+    };
+    const el = {
+      games: document.getElementById("games"),
+      load: document.getElementById("load"),
+      live: document.getElementById("live"),
+      prev: document.getElementById("prev"),
+      next: document.getElementById("next"),
+      play: document.getElementById("play"),
+      cursor: document.getElementById("cursor"),
+      speed: document.getElementById("speed"),
+      speedLabel: document.getElementById("speedLabel"),
+      cursorLabel: document.getElementById("cursorLabel"),
+      center: document.getElementById("center"),
+      stage: document.getElementById("tableStage"),
+      hudTopLeft: document.getElementById("hudTopLeft"),
+      hudTopRight: document.getElementById("hudTopRight"),
+      hudBottomLeft: document.getElementById("hudBottomLeft"),
+      hudBottomRight: document.getElementById("hudBottomRight"),
+      events: document.getElementById("events")
+    };
+    function initPlayer(id) {
+      if (!state.players[id]) {
+        state.players[id] = {
+          lives: 3, bankroll: 200, current_bet: 0, in_hand: true, hand: [],
+          will: 60, skill_affect: 55, focus: 100, stress: 0, resistance_bonus: 0,
+          emotions: { fear: 0, anger: 0, shame: 0, confidence: 0, tilt: 0 },
+          thinking: false, thought: "", tempo: 0, exposure: 0
+        };
+      }
+      return state.players[id];
+    }
+    function applyPlayerSnapshot(p) {
+      const x = initPlayer(p.player_id);
+      x.lives = Number(p.lives ?? x.lives);
+      x.bankroll = Number(p.bankroll ?? x.bankroll);
+      x.current_bet = Number(p.current_bet ?? x.current_bet);
+      x.in_hand = Boolean(p.in_hand ?? x.in_hand);
+      x.hand = p.hand || x.hand;
+      x.will = Number(p.will ?? x.will);
+      x.skill_affect = Number(p.skill_affect ?? x.skill_affect);
+      x.focus = Number(p.focus ?? x.focus);
+      x.stress = Number(p.stress ?? x.stress);
+      x.resistance_bonus = Number(p.resistance_bonus ?? x.resistance_bonus);
+      x.emotions = p.emotions || x.emotions;
+      x.tempo = Number(p.tempo ?? x.tempo);
+      x.exposure = Number(p.exposure ?? x.exposure);
+    }
+    function applyEvent(evt) {
+      state.events.push(evt);
+      const t = evt.type;
+      const p = evt.payload || {};
+      if (typeof p.turn === "number") state.turn = p.turn;
+      if (typeof p.pot === "number") state.pot = p.pot;
+      if (typeof p.current_high_bet === "number") state.highBet = p.current_high_bet;
+      if (t === "game_started") {
+        state.players = {};
+        for (let i = 1; i <= (p.players || 0); i++) initPlayer("P" + i);
+      }
+      if (t === "hand_started" || t === "hand_ended") (p.players || []).forEach(applyPlayerSnapshot);
+      if (t === "action_resolved" && p.player_state) applyPlayerSnapshot(p.player_state);
+      if (t === "thinking") {
+        const pid = p.player_id;
+        if (pid) {
+          const pl = initPlayer(pid);
+          pl.thinking = p.status === "start";
+          if (typeof p.summary === "string" && p.summary.trim()) pl.thought = p.summary.trim();
+        }
+      }
+      if (t === "showdown") state.winners = p.winners || [];
+      if (t === "game_ended") (p.final_state || []).forEach(applyPlayerSnapshot);
+      if (t === "life_lost" || t === "player_eliminated") {
+        if (p.player_id) initPlayer(p.player_id).lives = Number(p.remaining_lives ?? initPlayer(p.player_id).lives);
+      }
+    }
+    function resetDerived() {
+      state.turn = 0; state.pot = 0; state.highBet = 0; state.winners = [];
+      state.players = {}; state.events = [];
+    }
+    function seek(cursor) {
+      state.cursor = Math.max(0, Math.min(cursor, state.replayEvents.length));
+      resetDerived();
+      for (let i = 0; i < state.cursor; i++) applyEvent(state.replayEvents[i]);
+      render();
+    }
+    function stopPlay() {
+      state.playing = false;
+      if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    }
+    function startPlay() {
+      if (state.playing) return;
+      state.playing = true;
+      const speed = replaySpeed();
+      const delayMs = Math.max(80, Math.floor(440 / speed));
+      state.timer = setInterval(() => {
+        if (state.cursor >= state.replayEvents.length) { stopPlay(); render(); return; }
+        seek(state.cursor + 1);
+      }, delayMs);
+      render();
+    }
+    function replaySpeed() {
+      const raw = Number(el.speed.value || 3);
+      const mapped = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4];
+      return mapped[Math.max(0, Math.min(mapped.length - 1, raw - 1))];
+    }
+    function seatPositions(count) {
+      const cx = el.stage.clientWidth / 2;
+      const cy = el.stage.clientHeight / 2;
+      const rx = Math.min(360, cx - 150);
+      const ry = Math.min(250, cy - 120);
+      const ids = Object.keys(state.players).sort();
+      const out = {};
+      ids.forEach((pid, i) => {
+        const a = (-Math.PI / 2) + (2 * Math.PI * i / Math.max(1, count));
+        out[pid] = { x: cx + Math.cos(a) * rx - 130, y: cy + Math.sin(a) * ry - 68 };
+      });
+      return out;
+    }
+    function spriteColors(p, pid) {
+      const h = (pid.charCodeAt(1) * 37 + p.will * 3) % 360;
+      const jacket = `hsl(${h}deg, 55%, ${40 + (p.skill_affect % 20)}%)`;
+      const skin = p.stress > 45 ? "#f1bc98" : "#f7cfaa";
+      const eye = p.emotions.fear > 0.35 ? "#ffe0df" : "#f8fff7";
+      const iris = p.emotions.tilt > 0.2 ? "#be3f33" : "#233e39";
+      return { jacket, skin, eye, iris };
+    }
+    function drawSprite(canvas, p, pid) {
+      const c = canvas.getContext("2d");
+      c.imageSmoothingEnabled = false;
+      c.clearRect(0, 0, 48, 48);
+      c.fillStyle = "#1d4339"; c.fillRect(0, 0, 48, 48);
+      const col = spriteColors(p, pid);
+      c.fillStyle = col.jacket; c.fillRect(10, 28, 28, 14);
+      c.fillStyle = col.skin; c.fillRect(14, 10, 20, 18);
+      c.fillStyle = "#5a3e2d"; c.fillRect(12, 8, 24, 5);
+      c.fillStyle = col.eye; c.fillRect(18, 16, 4, 3); c.fillRect(26, 16, 4, 3);
+      c.fillStyle = col.iris; c.fillRect(19, 17, 2, 2); c.fillRect(27, 17, 2, 2);
+      c.fillStyle = "#b14633";
+      const fear = Number(p.emotions.fear || 0);
+      const anger = Number(p.emotions.anger || 0);
+      const shame = Number(p.emotions.shame || 0);
+      const conf = Number(p.emotions.confidence || 0);
+      const tilt = Number(p.emotions.tilt || 0);
+      const mouthY = fear > 0.3 ? 23 : conf > 0.2 ? 25 : 24;
+      const mouthW = anger > 0.3 ? 10 : shame > 0.3 ? 5 : 8;
+      c.fillRect(24 - Math.floor(mouthW / 2), mouthY, mouthW, 1);
+      if (anger > 0.25) { c.fillStyle = "#7c2018"; c.fillRect(17, 14, 6, 1); c.fillRect(25, 14, 6, 1); }
+      if (shame > 0.25) { c.fillStyle = "#f0a58f"; c.fillRect(14, 20, 3, 2); c.fillRect(31, 20, 3, 2); }
+      if (conf > 0.35) { c.fillStyle = "#c8ffd7"; c.fillRect(23, 12, 2, 2); }
+      if (tilt > 0.35) { c.fillStyle = "#e35946"; c.fillRect(36, 12, 3, 3); }
+      if (p.resistance_bonus > 8) { c.fillStyle = "#ffd97d"; c.fillRect(8, 26, 4, 4); }
+      if (p.tempo > 1) { c.fillStyle = "#a6f4da"; c.fillRect(36, 26, 4, 4); }
+    }
+    function emotionRows(p) {
+      const conf = [
+        { key: "fear", code: "F", label: "fear", color: "linear-gradient(90deg,#c34d39,#ff9a7c)" },
+        { key: "anger", code: "A", label: "anger", color: "linear-gradient(90deg,#b72e21,#ff6b53)" },
+        { key: "shame", code: "S", label: "shame", color: "linear-gradient(90deg,#8a6db7,#c0a1e6)" },
+        { key: "confidence", code: "C", label: "conf", color: "linear-gradient(90deg,#50a36b,#96e4af)" },
+        { key: "tilt", code: "T", label: "tilt", color: "linear-gradient(90deg,#df8f2f,#ffd078)" }
+      ];
+      return conf.map((e) => {
+        const v = Number(p.emotions?.[e.key] || 0);
+        const pct = Math.max(0, Math.min(100, (v + 1) * 50));
+        return `<div class="emotion-row">
+          <span class="emotion-icon">${e.code}</span>
+          <span>${e.label}</span>
+          <div class="bar"><div style="width:${pct}%;background:${e.color}"></div></div>
+          <span>${v.toFixed(2)}</span>
+        </div>`;
+      }).join("");
+    }
+    function colorize(obj) {
+      const escaped = JSON.stringify(obj || {}, null, 2).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      return escaped.replace(
+        /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?=:))|("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*")|(\b-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?\b)|(\btrue\b|\bfalse\b)|(\bnull\b)/g,
+        (m, key, str, num, bool, nul) => key ? `<span class="j-k">${key}</span>` : str ? `<span class="j-s">${str}</span>` : num ? `<span class="j-n">${num}</span>` : bool ? `<span class="j-b">${bool}</span>` : `<span class="j-0">${nul}</span>`
+      );
+    }
+    function renderStage() {
+      el.center.textContent = `pot=${state.pot}`;
+      el.hudTopLeft.innerHTML = `<div>turn ${state.turn}</div><div>high bet ${state.highBet}</div>`;
+      el.hudTopRight.innerHTML = `<div>winners</div><div>${state.winners.join(",") || "-"}</div>`;
+      const ids = Object.keys(state.players).sort();
+      const alive = ids.filter((pid) => Number(state.players[pid].lives || 0) > 0).length;
+      const thinking = ids.filter((pid) => state.players[pid].thinking).join(",") || "-";
+      el.hudBottomLeft.innerHTML = `<div>alive ${alive}/${ids.length}</div><div>events ${state.cursor}/${state.replayEvents.length}</div>`;
+      el.hudBottomRight.innerHTML = `<div>thinking</div><div>${thinking}</div>`;
+      el.stage.querySelectorAll(".seat").forEach((n) => n.remove());
+      const pos = seatPositions(ids.length);
+      ids.forEach((pid) => {
+        const p = state.players[pid];
+        const seat = document.createElement("div");
+        seat.className = "seat" + (p.in_hand ? "" : " folded");
+        seat.style.left = `${pos[pid].x}px`;
+        seat.style.top = `${pos[pid].y}px`;
+        const winner = state.winners.includes(pid) ? "<span class='badge winner'>winner</span>" : "";
+        const think = p.thinking ? "<span class='badge think'>thinking</span>" : "";
+        seat.innerHTML = `
+          <div class="head"><strong>${pid}</strong><span>${winner}${think}</span></div>
+            <div class="meta">life=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
+            <div class="meta">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)}</div>
+            <div class="sprite-row">
+              <canvas class="sprite" width="48" height="48"></canvas>
+              <div class="bars">
+                <div class="bar"><div style="width:${Math.max(0, Math.min(100, p.focus))}%;background:linear-gradient(90deg,#94d2b9,#cdf4dc)"></div></div>
+                ${emotionRows(p)}
+              </div>
+            </div>
+            <div class="meta">${p.thought || "-"}</div>
+            <div class="cards">${(p.hand || []).map((c) => `<span class="card">${c}</span>`).join("")}</div>`;
+        el.stage.appendChild(seat);
+        drawSprite(seat.querySelector("canvas"), p, pid);
+      });
+    }
+    function renderEvents() {
+      const tail = state.events.slice(-120);
+      el.events.innerHTML = tail.map((evt) =>
+        `<div class="ev"><div><strong>${evt.type}</strong></div><div class="mini">${evt.ts || ""}</div><pre>${colorize(evt.payload || {})}</pre></div>`
+      ).join("");
+      el.events.scrollTop = el.events.scrollHeight;
+    }
+    function render() {
+      el.cursor.max = String(Math.max(0, state.replayEvents.length));
+      el.cursor.value = String(state.cursor);
+      el.cursorLabel.textContent = `event ${state.cursor} / ${state.replayEvents.length}`;
+      el.play.textContent = state.playing ? "Pause" : "Play";
+      el.speedLabel.textContent = `${replaySpeed().toFixed(2)}x`;
+      renderStage();
+      renderEvents();
+    }
+    async function loadGames() {
+      const r = await fetch("/api/games");
+      const data = await r.json();
+      const games = data.games || [];
+      el.games.innerHTML = games.map((g) => `<option value="${g.game_id}">${g.game_id} (${g.event_count})</option>`).join("");
+      if (games.length && !state.gameId) state.gameId = games[0].game_id;
+      if (state.gameId) el.games.value = state.gameId;
+      render();
+    }
+    async function loadReplay() {
+      state.gameId = el.games.value;
+      stopPlay();
+      if (state.source) { state.source.close(); state.source = null; }
+      const r = await fetch(`/api/replay?game_id=${encodeURIComponent(state.gameId)}`);
+      const data = await r.json();
+      state.replayEvents = data.events || [];
+      seek(state.replayEvents.length);
+    }
+    function startLive() {
+      state.gameId = el.games.value;
+      stopPlay();
+      resetDerived();
+      state.replayEvents = [];
+      state.cursor = 0;
+      if (state.source) state.source.close();
+      state.source = new EventSource(`/api/stream?game_id=${encodeURIComponent(state.gameId)}`);
+      state.source.onmessage = (msg) => {
+        const evt = JSON.parse(msg.data);
+        state.cursor += 1;
+        applyEvent(evt);
+        render();
+      };
+      state.source.onerror = () => {};
+      render();
+    }
+    el.load.addEventListener("click", loadReplay);
+    el.live.addEventListener("click", startLive);
+    el.prev.addEventListener("click", () => { stopPlay(); seek(state.cursor - 1); });
+    el.next.addEventListener("click", () => { stopPlay(); seek(state.cursor + 1); });
+    el.play.addEventListener("click", () => { state.playing ? stopPlay() : startPlay(); render(); });
+    el.cursor.addEventListener("input", () => { stopPlay(); seek(Number(el.cursor.value)); });
+    el.speed.addEventListener("input", () => {
+      if (state.playing) {
+        stopPlay();
+        startPlay();
+      }
+      render();
+    });
+    window.addEventListener("resize", render);
+    loadGames();
+  </script>
+</body>
+</html>
