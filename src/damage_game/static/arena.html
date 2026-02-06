@@ -375,9 +375,22 @@
           table.players[p.target_player_id] = {
             ...(table.players[p.target_player_id] || { player_id: p.target_player_id }),
             reaction: String(p.summary || "").trim().slice(0, 160),
+            emotions: p.target_emotions || (table.players[p.target_player_id] || {}).emotions || {},
             thought: (table.players[p.target_player_id] || {}).thought || "",
             chatter: (table.players[p.target_player_id] || {}).chatter || "",
             thinking: (table.players[p.target_player_id] || {}).thinking || false,
+          };
+        }
+        if (evt.type === "affect_resolved" && p.target_player_id && p.target_emotions) {
+          table.players[p.target_player_id] = {
+            ...(table.players[p.target_player_id] || { player_id: p.target_player_id }),
+            emotions: p.target_emotions,
+          };
+        }
+        if (evt.type === "direct_emoter_attack_resolved" && p.target_player_id && p.after) {
+          table.players[p.target_player_id] = {
+            ...(table.players[p.target_player_id] || { player_id: p.target_player_id }),
+            emotions: p.after,
           };
         }
         if (evt.type === "showdown") {

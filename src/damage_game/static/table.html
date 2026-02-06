@@ -412,6 +412,13 @@
       if (t === "chatter_evaluated" && p.target_player_id) {
         const pl = initPlayer(p.target_player_id);
         pl.reaction = String(p.summary || "").trim().slice(0, 120);
+        if (p.target_emotions) pl.emotions = p.target_emotions;
+      }
+      if (t === "affect_resolved" && p.target_player_id && p.target_emotions) {
+        initPlayer(p.target_player_id).emotions = p.target_emotions;
+      }
+      if (t === "direct_emoter_attack_resolved" && p.target_player_id && p.after) {
+        initPlayer(p.target_player_id).emotions = p.after;
       }
       if (t === "showdown") state.winners = p.winners || [];
       if (t === "game_ended") (p.final_state || []).forEach(applyPlayerSnapshot);
