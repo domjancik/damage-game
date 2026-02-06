@@ -264,6 +264,8 @@
           resistance_bonus: 0,
           thinking: false,
           thought: "",
+          chatter: "",
+          reaction: "",
           hand: [],
           tempo: 0,
           exposure: 0,
@@ -322,6 +324,12 @@
             pl.thought = p.summary.trim();
           }
         }
+      }
+      if (t === "chatter_posted" && p.player_id) {
+        initPlayer(p.player_id).chatter = String(p.message || "").trim().slice(0, 180);
+      }
+      if (t === "chatter_evaluated" && p.target_player_id) {
+        initPlayer(p.target_player_id).reaction = String(p.summary || "").trim().slice(0, 140);
       }
       if (t === "life_lost" || t === "player_eliminated") {
         const pid = p.player_id;
@@ -383,6 +391,8 @@
             <div><strong>${pid}</strong>${winnerBadge}${thinkingBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="cards">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)} resist=${p.resistance_bonus.toFixed(1)}</div>
             <div class="cards">thought: ${p.thought || "-"}</div>
+            <div class="cards">chatter: ${p.chatter || "-"}</div>
+            <div class="cards">reaction: ${p.reaction || "-"}</div>
             <div class="cards">cards: ${(p.hand || []).join(" ") || "-"}</div>
             ${emoRows}
           </div>

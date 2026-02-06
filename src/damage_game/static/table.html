@@ -170,6 +170,11 @@
       margin-top: 6px;
       align-items: center;
     }
+    .sprite-wrap {
+      position: relative;
+      width: 48px;
+      height: 48px;
+    }
     .sprite {
       width: 48px;
       height: 48px;
@@ -177,6 +182,37 @@
       border-radius: 4px;
       image-rendering: pixelated;
       background: #173a31;
+    }
+    .think-ring {
+      position: absolute;
+      left: -5px;
+      top: -5px;
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 224, 154, 0.95);
+      box-shadow: 0 0 10px rgba(255, 206, 120, 0.8);
+      pointer-events: none;
+      animation: ringPulse 1s ease-in-out infinite;
+    }
+    @keyframes ringPulse {
+      0% { transform: scale(0.94); opacity: 0.7; }
+      50% { transform: scale(1.06); opacity: 1; }
+      100% { transform: scale(0.94); opacity: 0.7; }
+    }
+    .bubble {
+      margin-top: 5px;
+      padding: 4px 6px;
+      border-radius: 8px;
+      background: rgba(255, 252, 232, 0.18);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: #fff5d8;
+      font-size: 11px;
+      line-height: 1.25;
+    }
+    .bubble.chatter {
+      background: rgba(221, 247, 255, 0.17);
+      color: #ddf6ff;
     }
     .bars { display: grid; gap: 4px; }
     .emotion-row {
@@ -325,7 +361,7 @@
           lives: 3, bankroll: 200, current_bet: 0, in_hand: true, hand: [],
           will: 60, skill_affect: 55, focus: 100, stress: 0, resistance_bonus: 0,
           emotions: { fear: 0, anger: 0, shame: 0, confidence: 0, tilt: 0 },
-          thinking: false, thought: "", tempo: 0, exposure: 0
+          thinking: false, thought: "", chatter: "", reaction: "", tempo: 0, exposure: 0
         };
       }
       return state.players[id];
@@ -368,6 +404,14 @@
           pl.thinking = p.status === "start";
           if (typeof p.summary === "string" && p.summary.trim()) pl.thought = p.summary.trim();
         }
+      }
+      if (t === "chatter_posted" && p.player_id) {
+        const pl = initPlayer(p.player_id);
+        pl.chatter = String(p.message || "").trim().slice(0, 160);
+      }
+      if (t === "chatter_evaluated" && p.target_player_id) {
+        const pl = initPlayer(p.target_player_id);
+        pl.reaction = String(p.summary || "").trim().slice(0, 120);
       }
       if (t === "showdown") state.winners = p.winners || [];
       if (t === "game_ended") (p.final_state || []).forEach(applyPlayerSnapshot);
@@ -526,18 +570,22 @@
         seat.style.top = `${pos[pid].y}px`;
         const winner = state.winners.includes(pid) ? "<span class='badge winner'>winner</span>" : "";
         const think = p.thinking ? "<span class='badge think'>thinking</span>" : "";
+        const bubble = p.chatter
+          ? `<div class="bubble chatter">chat: ${p.chatter}</div>`
+          : (p.thought ? `<div class="bubble">thought: ${p.thought}</div>` : "");
         seat.innerHTML = `
           <div class="head"><strong>${pid}</strong><span>${winner}${think}</span></div>
             <div class="meta">life=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="meta">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)}</div>
             <div class="sprite-row">
-              <canvas class="sprite" width="48" height="48"></canvas>
+              <div class="sprite-wrap"><canvas class="sprite" width="48" height="48"></canvas>${p.thinking ? "<div class='think-ring'></div>" : ""}</div>
               <div class="bars">
                 <div class="bar"><div style="width:${Math.max(0, Math.min(100, p.focus))}%;background:linear-gradient(90deg,#94d2b9,#cdf4dc)"></div></div>
                 ${emotionRows(p)}
               </div>
             </div>
-            <div class="meta">${p.thought || "-"}</div>
+            ${bubble}
+            <div class="meta">${p.reaction || "-"}</div>
             <div class="cards">${(p.hand || []).map((c) => `<span class="card">${c}</span>`).join("")}</div>`;
         el.stage.appendChild(seat);
         drawSprite(seat.querySelector("canvas"), p, pid);

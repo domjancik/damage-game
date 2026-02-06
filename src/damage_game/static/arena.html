@@ -232,6 +232,7 @@
     const tableLayer = new THREE.Group();
     scene.add(tableLayer);
     const cardTextureCache = new Map();
+    const pulseRings = [];
 
     function dominantEmotion(em) {
       const base = em || {};
@@ -284,6 +285,8 @@
               ...pl,
               thinking: false,
               thought: (table.players[pl.player_id] || {}).thought || "",
+              chatter: (table.players[pl.player_id] || {}).chatter || "",
+              reaction: (table.players[pl.player_id] || {}).reaction || "",
               avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
             };
           }
@@ -296,6 +299,8 @@
             ...p.player_state,
             thinking: (table.players[p.player_id] || {}).thinking || false,
             thought: (table.players[p.player_id] || {}).thought || "",
+            chatter: (table.players[p.player_id] || {}).chatter || "",
+            reaction: (table.players[p.player_id] || {}).reaction || "",
             avatar_id: p.player_state.avatar_id || (table.players[p.player_id] || {}).avatar_id || "pilot_ace",
           };
         }
@@ -312,6 +317,26 @@
             thought: typeof p.summary === "string" && p.summary.trim()
               ? p.summary.trim()
               : (table.players[p.player_id] || {}).thought || "",
+            chatter: (table.players[p.player_id] || {}).chatter || "",
+            reaction: (table.players[p.player_id] || {}).reaction || "",
+          };
+        }
+        if (evt.type === "chatter_posted" && p.player_id) {
+          table.players[p.player_id] = {
+            ...(table.players[p.player_id] || { player_id: p.player_id }),
+            chatter: String(p.message || "").trim().slice(0, 160),
+            thought: (table.players[p.player_id] || {}).thought || "",
+            reaction: (table.players[p.player_id] || {}).reaction || "",
+            thinking: (table.players[p.player_id] || {}).thinking || false,
+          };
+        }
+        if (evt.type === "chatter_evaluated" && p.target_player_id) {
+          table.players[p.target_player_id] = {
+            ...(table.players[p.target_player_id] || { player_id: p.target_player_id }),
+            reaction: String(p.summary || "").trim().slice(0, 160),
+            thought: (table.players[p.target_player_id] || {}).thought || "",
+            chatter: (table.players[p.target_player_id] || {}).chatter || "",
+            thinking: (table.players[p.target_player_id] || {}).thinking || false,
           };
         }
         if (evt.type === "showdown") {
@@ -325,6 +350,8 @@
               ...pl,
               thinking: (table.players[pl.player_id] || {}).thinking || false,
               thought: (table.players[pl.player_id] || {}).thought || "",
+              chatter: (table.players[pl.player_id] || {}).chatter || "",
+              reaction: (table.players[pl.player_id] || {}).reaction || "",
               avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
             };
           }
@@ -389,6 +416,23 @@
       const tex = new THREE.CanvasTexture(canvas);
       tex.needsUpdate = true;
       return tex;
+    }
+
+    function wrapText(text, maxChars) {
+      const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return [];
+      const lines = [];
+      let cur = "";
+      for (const w of words) {
+        const next = cur ? `${cur} ${w}` : w;
+        if (next.length <= maxChars) cur = next;
+        else {
+          if (cur) lines.push(cur);
+          cur = w;
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines.slice(0, 3);
     }
 
     function parseCardCode(code) {
@@ -476,6 +520,7 @@
           }
         });
       }
+      pulseRings.length = 0;
 
       const list = state.tables.filter((t) => {
         if (state.liveOnly && t.status !== "active") return false;
@@ -575,6 +620,24 @@
             head.position.y = 1.52;
             head.castShadow = true;
             group.add(head);
+            if (pl.thinking) {
+              const ring = new THREE.Mesh(
+                new THREE.TorusGeometry(0.36, 0.035, 10, 28),
+                new THREE.MeshStandardMaterial({
+                  color: "#ffd49a",
+                  emissive: "#f5a74f",
+                  emissiveIntensity: 0.5,
+                  transparent: true,
+                  opacity: 0.95,
+                })
+              );
+              ring.position.copy(pos);
+              ring.position.y = 1.52;
+              ring.rotation.x = Math.PI / 2;
+              ring.userData.pulsePhase = Math.random() * Math.PI * 2;
+              group.add(ring);
+              pulseRings.push(ring);
+            }
 
             const label = new THREE.Sprite(
               new THREE.SpriteMaterial({ map: buildLabelTexture([
@@ -588,6 +651,17 @@
             label.position.copy(pos);
             label.position.y = 2.55;
             group.add(label);
+            const bubbleText = pl.chatter || pl.thought || pl.reaction || "";
+            if (bubbleText) {
+              const lines = wrapText(bubbleText, 22);
+              const bubble = new THREE.Sprite(
+                new THREE.SpriteMaterial({ map: buildLabelTexture(lines.length ? lines : [bubbleText.slice(0, 22)]) })
+              );
+              bubble.scale.set(3.2, 1.5, 1);
+              bubble.position.copy(pos);
+              bubble.position.y = 3.7;
+              group.add(bubble);
+            }
 
             const cards = Array.isArray(pl.hand) ? pl.hand.slice(0, 5) : [];
             if (cards.length) {
@@ -715,6 +789,15 @@
     function animate() {
       requestAnimationFrame(animate);
       controls.update();
+      const now = performance.now() * 0.004;
+      for (const ring of pulseRings) {
+        const phase = Number(ring.userData.pulsePhase || 0);
+        const k = 0.88 + 0.18 * (0.5 + 0.5 * Math.sin(now + phase));
+        ring.scale.set(k, k, k);
+        if (ring.material && "opacity" in ring.material) {
+          ring.material.opacity = 0.65 + 0.3 * (0.5 + 0.5 * Math.sin(now + phase));
+        }
+      }
       renderer.render(scene, camera);
     }
     animate();
