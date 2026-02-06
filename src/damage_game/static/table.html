@@ -347,6 +347,7 @@
       <button id="next">Next</button>
       <button id="play">Play</button>
       <button id="fullscreen">Focus Table</button>
+      <button id="toggleLog">Hide Log</button>
     </div>
     <div class="mini">
       <div class="row">
@@ -382,7 +383,7 @@
     const state = {
       gameId: null, turn: 0, pot: 0, highBet: 0, winners: [], cardStyle: "draw5", communityCards: [],
       players: {}, events: [], replayEvents: [], cursor: 0,
-      source: null, playing: false, timer: null, tableFocus: false
+      source: null, playing: false, timer: null, tableFocus: false, logHidden: false
     };
     const el = {
       games: document.getElementById("games"),
@@ -395,6 +396,7 @@
       speed: document.getElementById("speed"),
       speedLabel: document.getElementById("speedLabel"),
       fullscreen: document.getElementById("fullscreen"),
+      toggleLog: document.getElementById("toggleLog"),
       cursorLabel: document.getElementById("cursorLabel"),
       center: document.getElementById("center"),
       stage: document.getElementById("tableStage"),
@@ -408,6 +410,15 @@
       state.tableFocus = Boolean(enabled);
       document.body.classList.toggle("table-focus", state.tableFocus);
       el.fullscreen.textContent = state.tableFocus ? "Exit Focus" : "Focus Table";
+      render();
+    }
+    function setLogHidden(hidden) {
+      state.logHidden = Boolean(hidden);
+      const logPanel = el.events.closest(".panel");
+      if (logPanel) {
+        logPanel.style.display = state.logHidden ? "none" : "";
+      }
+      el.toggleLog.textContent = state.logHidden ? "Show Log" : "Hide Log";
       render();
     }
     function initPlayer(id) {
@@ -734,6 +745,9 @@
     });
     el.fullscreen.addEventListener("click", () => {
       setTableFocus(!state.tableFocus);
+    });
+    el.toggleLog.addEventListener("click", () => {
+      setLogHidden(!state.logHidden);
     });
     document.addEventListener("fullscreenchange", () => render());
     window.addEventListener("resize", render);
