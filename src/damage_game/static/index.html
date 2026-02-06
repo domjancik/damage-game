@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Damage Live Visualizer</title>
+  <style>
+    :root {
+      --bg: #f4efe6;
+      --ink: #132522;
+      --muted: #48615d;
+      --accent: #bf3f2f;
+      --accent-2: #1b7f79;
+      --card: #fffbf3;
+      --line: #d8c8b6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 10%, #ffcf9d 0%, transparent 30%),
+        radial-gradient(circle at 90% 0%, #8dd2cc 0%, transparent 30%),
+        var(--bg);
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
+    .top {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    select, button {
+      height: 38px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 0 12px;
+      font: inherit;
+    }
+    button {
+      cursor: pointer;
+      background: linear-gradient(120deg, var(--accent), #d96a49);
+      color: #fff;
+      border: none;
+      transition: transform .12s ease;
+    }
+    button:hover { transform: translateY(-1px); }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr 1fr;
+      gap: 12px;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 280px;
+    }
+    .panel h3 {
+      margin: 0 0 8px 0;
+      font-size: 15px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: #e9f2f1;
+      color: #16403c;
+      margin-left: 8px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+      font-size: 13px;
+    }
+    .bar {
+      height: 10px;
+      background: #f0e6d8;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar > div {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-2), #6cc6b8);
+      width: 0;
+    }
+    .event-feed {
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      height: 420px;
+      overflow: auto;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fffdf8;
+    }
+    .event { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #eee2d3; }
+    .meta { color: var(--muted); font-size: 11px; }
+    .token {
+      margin-top: 6px;
+      padding: 8px;
+      border-radius: 8px;
+      background: #eef7f6;
+      font-size: 12px;
+    }
+    @media (max-width: 980px) {
+      .top { grid-template-columns: 1fr 1fr; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <select id="games"></select>
+      <button id="refresh">Refresh Games</button>
+      <button id="replay">Load Replay</button>
+      <button id="live">Live Stream</button>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <h3>Players <span id="gameLabel" class="badge">none</span></h3>
+        <div id="players"></div>
+      </div>
+      <div class="panel">
+        <h3>Token Monitor</h3>
+        <div id="tokens" class="token">No data yet.</div>
+      </div>
+      <div class="panel">
+        <h3>Event Feed</h3>
+        <div id="events" class="event-feed"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = {
+      gameId: null,
+      players: {},
+      events: [],
+      source: null
+    };
+
+    const el = {
+      games: document.getElementById("games"),
+      gameLabel: document.getElementById("gameLabel"),
+      players: document.getElementById("players"),
+      tokens: document.getElementById("tokens"),
+      events: document.getElementById("events"),
+      refresh: document.getElementById("refresh"),
+      replay: document.getElementById("replay"),
+      live: document.getElementById("live")
+    };
+
+    function initPlayer(id) {
+      if (!state.players[id]) {
+        state.players[id] = { lives: 3, resolve: 12, tempo: 0, exposure: 0, emotions: { fear: 0, anger: 0, shame: 0, confidence: 0, tilt: 0 } };
+      }
+      return state.players[id];
+    }
+
+    function applyEvent(evt) {
+      state.events.push(evt);
+      const t = evt.type;
+      const p = evt.payload || {};
+
+      if (t === "game_started") {
+        state.players = {};
+        const n = p.players || 0;
+        for (let i = 1; i <= n; i++) initPlayer("P" + i);
+      }
+      if (t === "action_resolved") {
+        const actor = p.actor_player_id || p.player_id;
+        const target = p.target_player_id;
+        if (actor) initPlayer(actor);
+        if (target) initPlayer(target);
+        const tfx = p.tactical_effect || {};
+        const rdelta = tfx.resolve_delta || {};
+        const tdelta = tfx.tempo_delta || {};
+        Object.keys(rdelta).forEach(pid => initPlayer(pid).resolve += Number(rdelta[pid]));
+        Object.keys(tdelta).forEach(pid => initPlayer(pid).tempo += Number(tdelta[pid]));
+        if (target && p.affective_effect && p.affective_effect.target_emotions) {
+          initPlayer(target).emotions = p.affective_effect.target_emotions;
+        }
+      }
+      if (t === "life_lost" || t === "player_eliminated") {
+        const pid = p.player_id;
+        if (pid) initPlayer(pid).lives = Number(p.remaining_lives ?? initPlayer(pid).lives);
+      }
+      if (t === "game_ended") {
+        const finalState = p.final_state || [];
+        finalState.forEach(s => {
+          state.players[s.player_id] = s;
+        });
+      }
+      if (t === "turn_summary") {
+        const ts = p.token_stats || {};
+        const byModel = p.token_stats_by_model || {};
+        const modelRows = Object.entries(byModel).map(([k, v]) => `${k}: calls=${v.calls}, avg=${v.avg_total.toFixed(1)}, req_ctx=${v.required_context_capacity.toFixed(0)}`);
+        el.tokens.textContent =
+          `calls=${ts.calls || 0}, avg_total=${(ts.avg_total || 0).toFixed(1)}, p95=${(ts.p95_total || 0).toFixed(1)}, required_ctx=${(ts.required_context_capacity || 0).toFixed(0)}\n` +
+          modelRows.join("\n") +
+          (p.context_warning ? `\nwarning=${p.context_warning}` : "");
+      }
+    }
+
+    function renderPlayers() {
+      const ids = Object.keys(state.players).sort();
+      if (!ids.length) {
+        el.players.innerHTML = "<div>No player data yet.</div>";
+        return;
+      }
+      const rows = ids.map(pid => {
+        const p = state.players[pid];
+        const resolvePct = Math.max(0, Math.min(100, (p.resolve / 12) * 100));
+        const fearPct = Math.max(0, Math.min(100, (Number(p.emotions?.fear || 0) + 1) * 50));
+        return `
+          <div style="margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #ecdfcf;">
+            <div><strong>${pid}</strong> lives=${p.lives} resolve=${p.resolve} tempo=${p.tempo} exposure=${p.exposure}</div>
+            <div class="row"><span>Resolve</span><div class="bar"><div style="width:${resolvePct}%"></div></div></div>
+            <div class="row"><span>Fear</span><div class="bar"><div style="width:${fearPct}%;background:linear-gradient(90deg,#bf3f2f,#ef8a6d)"></div></div></div>
+          </div>
+        `;
+      }).join("");
+      el.players.innerHTML = rows;
+    }
+
+    function renderEvents() {
+      const tail = state.events.slice(-120);
+      el.events.innerHTML = tail.map((evt) => {
+        const payload = JSON.stringify(evt.payload || {});
+        return `<div class="event"><div><strong>${evt.type}</strong></div><div class="meta">${evt.ts || ""}</div><div>${payload}</div></div>`;
+      }).join("");
+      el.events.scrollTop = el.events.scrollHeight;
+    }
+
+    function refreshView() {
+      el.gameLabel.textContent = state.gameId || "none";
+      renderPlayers();
+      renderEvents();
+    }
+
+    async function loadGames() {
+      const r = await fetch("/api/games");
+      const data = await r.json();
+      const games = data.games || [];
+      el.games.innerHTML = games.map(g => `<option value="${g.game_id}">${g.game_id} (${g.event_count})</option>`).join("");
+      if (games.length && !state.gameId) {
+        state.gameId = games[0].game_id;
+      }
+      if (state.gameId) el.games.value = state.gameId;
+      refreshView();
+    }
+
+    async function loadReplay() {
+      state.gameId = el.games.value;
+      state.events = [];
+      state.players = {};
+      if (state.source) { state.source.close(); state.source = null; }
+      const r = await fetch(`/api/replay?game_id=${encodeURIComponent(state.gameId)}`);
+      const data = await r.json();
+      (data.events || []).forEach(applyEvent);
+      refreshView();
+    }
+
+    function startLive() {
+      state.gameId = el.games.value;
+      state.events = [];
+      state.players = {};
+      if (state.source) state.source.close();
+      state.source = new EventSource(`/api/stream?game_id=${encodeURIComponent(state.gameId)}`);
+      state.source.onmessage = (msg) => {
+        const evt = JSON.parse(msg.data);
+        applyEvent(evt);
+        refreshView();
+      };
+      state.source.onerror = () => {};
+      refreshView();
+    }
+
+    el.refresh.addEventListener("click", loadGames);
+    el.replay.addEventListener("click", loadReplay);
+    el.live.addEventListener("click", startLive);
+    el.games.addEventListener("change", () => { state.gameId = el.games.value; refreshView(); });
+    loadGames();
+  </script>
+</body>
+</html>
+
