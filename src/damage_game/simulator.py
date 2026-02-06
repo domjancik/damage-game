@@ -94,6 +94,7 @@ class DamageSimulator:
         self.pot = 0
         self.current_high_bet = 0
         self.community_cards: list[str] = []
+        self._community_deck_cards: list[str] = []
         self._prime_model_router()
 
     def run(self) -> dict:
@@ -185,8 +186,9 @@ class DamageSimulator:
         self.pot = 0
         self.current_high_bet = 0
         self.community_cards = []
+        self._community_deck_cards = []
         if self.card_style == "holdem":
-            self.community_cards = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
+            self._community_deck_cards = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
 
         for p in participants:
             p.in_hand = True
@@ -195,6 +197,7 @@ class DamageSimulator:
             else:
                 p.hand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
             p.current_bet = 0
+            p.hand_contribution = 0
             p.resistance_bonus = 0.0
             p.hand_emotion_shift = {"fear": 0.0, "anger": 0.0, "shame": 0.0, "confidence": 0.0, "tilt": 0.0}
             p.focus = min(100.0, p.focus + 14.0)
@@ -202,9 +205,9 @@ class DamageSimulator:
 
             ante_paid = min(self.cfg.ante, max(0, p.bankroll))
             p.bankroll -= ante_paid
-            p.current_bet += ante_paid
+            p.hand_contribution += ante_paid
             self.pot += ante_paid
-            self.current_high_bet = max(self.current_high_bet, p.current_bet)
+        self.current_high_bet = 0
 
         print(
             f"Hand setup: participants={len(participants)} ante={self.cfg.ante} "
@@ -725,6 +728,56 @@ class DamageSimulator:
             target.emotions.tilt = clampf(target.emotions.tilt + delta, -1.0, 1.0)
 
     def _betting_round(self, participants: list[PlayerState], turn: int) -> None:
+        if self.card_style == "holdem":
+            self._betting_round_holdem(participants, turn)
+            return
+        self._betting_cycle(participants, turn)
+
+    def _betting_round_holdem(self, participants: list[PlayerState], turn: int) -> None:
+        self._start_street(participants)
+        self._betting_cycle(participants, turn)
+        if len([p for p in participants if p.in_hand]) <= 1:
+            return
+        self._reveal_community(turn=turn, street="flop", count=3)
+
+        self._start_street(participants)
+        self._betting_cycle(participants, turn)
+        if len([p for p in participants if p.in_hand]) <= 1:
+            return
+        self._reveal_community(turn=turn, street="turn", count=4)
+
+        self._start_street(participants)
+        self._betting_cycle(participants, turn)
+        if len([p for p in participants if p.in_hand]) <= 1:
+            return
+        self._reveal_community(turn=turn, street="river", count=5)
+
+        self._start_street(participants)
+        self._betting_cycle(participants, turn)
+
+    def _start_street(self, participants: list[PlayerState]) -> None:
+        self.current_high_bet = 0
+        for p in participants:
+            if p.in_hand and p.lives > 0:
+                p.current_bet = 0
+
+    def _reveal_community(self, turn: int, street: str, count: int) -> None:
+        target = max(0, min(count, len(self._community_deck_cards)))
+        if target <= len(self.community_cards):
+            return
+        before = len(self.community_cards)
+        self.community_cards = list(self._community_deck_cards[:target])
+        self.event_logger.write(
+            "community_revealed",
+            {
+                "turn": turn,
+                "street": street,
+                "community_cards": list(self.community_cards),
+                "revealed_cards": list(self.community_cards[before:target]),
+            },
+        )
+
+    def _betting_cycle(self, participants: list[PlayerState], turn: int) -> None:
         raises_seen = True
         cycle = 0
         while raises_seen and cycle < 2:
@@ -1003,6 +1056,7 @@ class DamageSimulator:
             commit = min(to_call, actor.bankroll)
             actor.bankroll -= commit
             actor.current_bet += commit
+            actor.hand_contribution += commit
             self.pot += commit
         elif action.kind == ActionKind.RAISE:
             raise_amount = int(action.payload.get("amount", self.cfg.min_raise))
@@ -1010,6 +1064,7 @@ class DamageSimulator:
             commit = min(actor.bankroll, to_call + raise_amount)
             actor.bankroll -= commit
             actor.current_bet += commit
+            actor.hand_contribution += commit
             self.pot += commit
             self.current_high_bet = max(self.current_high_bet, actor.current_bet)
             was_raise = True
@@ -1045,6 +1100,7 @@ class DamageSimulator:
                 commit = min(to_call, actor.bankroll)
                 actor.bankroll -= commit
                 actor.current_bet += commit
+                actor.hand_contribution += commit
                 self.pot += commit
 
         print(
@@ -1177,7 +1233,7 @@ class DamageSimulator:
         self, participants: list[PlayerState], powers: dict[str, tuple[int, tuple[int, ...]]]
     ) -> dict[str, int]:
         payouts = {p.player_id: 0 for p in participants}
-        contributions = {p.player_id: max(0, int(p.current_bet)) for p in participants}
+        contributions = {p.player_id: max(0, int(p.hand_contribution)) for p in participants}
         levels = sorted({amt for amt in contributions.values() if amt > 0})
         if not levels:
             return payouts
@@ -1448,6 +1504,7 @@ class DamageSimulator:
             "lives": player.lives,
             "bankroll": player.bankroll,
             "current_bet": player.current_bet,
+            "hand_contribution": player.hand_contribution,
             "in_hand": player.in_hand,
             "hand": list(player.hand),
             "will": player.will,

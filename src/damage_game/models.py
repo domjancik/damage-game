@@ -143,6 +143,7 @@ class PlayerState:
     lives: int = 3
     bankroll: int = 200
     current_bet: int = 0
+    hand_contribution: int = 0
     in_hand: bool = True
     hand: list[str] = field(default_factory=list)
     will: int = 60
