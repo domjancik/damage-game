@@ -20,6 +20,7 @@ class VisualizerServer:
         handler_cls = self._build_handler()
         server = ThreadingHTTPServer((self.host, self.port), handler_cls)
         print(f"Visualizer server on http://{self.host}:{self.port}")
+        print(f"Views: /  /table  /arena")
         print(f"Watching logs in {Path(self.log_dir).resolve()}")
         server.serve_forever()
 
@@ -32,7 +33,7 @@ class VisualizerServer:
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
                 parsed = urlparse(self.path)
-                path = parsed.path
+                path = parsed.path.rstrip("/") or "/"
                 if path == "/":
                     self._send_index(static_index)
                     return
