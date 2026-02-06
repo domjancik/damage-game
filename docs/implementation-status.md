@@ -54,6 +54,10 @@ Updated: 2026-02-06
 - persistent DB backend (currently JSONL)
 - formal multi-street poker variant/community cards
 - test suite coverage for all event contracts and side-pot edge cases
+- 3D arena page (Three.js) with multi-table tournament projection
+- tournament progression service (6-max/8-max bracket advancement)
+- avatar selection and procedural expression mapping in 3D scene
+- authenticated user onboarding and encrypted provider endpoint vault
 
 ## 5. Recommended Next Docs
 - `docs/testing-strategy.md`:
@@ -62,3 +66,5 @@ Updated: 2026-02-06
   - recommended player-model mixes and cost/latency profiles
 - `docs/redaction-and-roles.md`:
   - public/research/admin visibility boundaries
+- `docs/threejs-tournament-platform-spec.md`:
+  - 3D arena UX, multi-table topology, tournament lifecycle, auth + secret handling

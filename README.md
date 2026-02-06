@@ -69,3 +69,4 @@ Then open `http://127.0.0.1:8787`, select a game, and choose `Load Replay` or `L
 - `docs/architecture-connectivity-spec.md`: runtime architecture and API/stream connectivity.
 - `docs/realtime-visualizer-spec.md`: dashboard visualizer requirements.
 - `docs/pixel-topdown-visualizer-spec.md`: pixel top-view table visualizer design.
+- `docs/threejs-tournament-platform-spec.md`: planned 3D arena, tournament progression, avatar system, and secure endpoint onboarding.

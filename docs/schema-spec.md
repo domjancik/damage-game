@@ -1,6 +1,6 @@
 # Schema Specification
 
-Version: 0.2 (Implemented Baseline)
+Version: 0.3 (Implemented + Planned Extensions)
 Status: Draft
 
 ## 1. Purpose
@@ -186,3 +186,61 @@ Validation:
 ## 7. Notes
 - Current visualizer is a dev/research surface and intentionally renders private cards.
 - Future role-gated redaction should hide `hand` and thought summaries for spectator mode.
+
+## 8. Planned Tournament + 3D Arena Schemas
+These are design targets for the next phase and are not emitted yet.
+
+## 8.1 AvatarProfile
+- `avatar_id: string`
+- `style: enum[pixel, lowpoly_flat]`
+- `body: string`
+- `palette: {primary:string, secondary:string, accent:string}`
+- `accessories: string[]`
+- `expression_bias: map[emotion -> float]`
+
+## 8.2 Tournament
+- `tournament_id: string`
+- `format: enum[single_elimination]`
+- `seat_format: enum[6,8]`
+- `status: enum[pending,active,completed]`
+- `stake_tiers: int[]`
+- `created_by: string`
+
+## 8.3 ArenaTableProjection
+- `table_id: string`
+- `tournament_id: string`
+- `game_id: string`
+- `seat_count: int` (6 or 8)
+- `stake_level: int`
+- `height_y: float`
+- `position: {x:float,y:float,z:float}`
+- `pot: int`
+- `phase: string`
+- `seats: ArenaSeatProjection[]`
+
+## 8.4 ArenaSeatProjection
+- `seat_index: int`
+- `player_id: string|null`
+- `model_id: string|null`
+- `avatar: AvatarProfile|null`
+- `is_thinking: bool`
+- `emotions: EmotionState|null`
+
+## 8.5 EndpointCredentialMeta
+- `credential_id: string`
+- `owner_user_id: string`
+- `provider_kind: enum[openai_compatible]`
+- `base_url: string`
+- `model_allowlist: string[]`
+- `api_key_ciphertext: string`
+- `api_key_last4: string`
+- `kek_key_id: string`
+- `created_ts: ISO8601 UTC string`
+- `rotated_ts: ISO8601 UTC string|null`
+
+## 8.6 Planned Event Types
+- `avatar_selected`
+- `table_spawned`
+- `table_promoted`
+- `player_advanced`
+- `credential_registered` (audit-safe payload only)

@@ -1,6 +1,6 @@
 # System Architecture Connectivity Spec
 
-Version: 0.2
+Version: 0.3
 Status: Draft
 
 ## 1. Purpose
@@ -30,6 +30,12 @@ Define how engine, agent runtime, provider routing, data stores, and web visuali
 
 8. `Orchestrator`
 - launches games, tournaments, seeds, and simulation workers.
+9. `Tournament Service` (planned)
+- bracket generation, table assignments, advancement.
+10. `Arena Projection Service` (planned)
+- computes and serves 3D world/table/player projection state.
+11. `Credential Vault` (planned)
+- encrypted storage for user-scoped provider credentials.
 
 ## 3. Runtime Topology
 - Current implemented topology:
@@ -116,6 +122,9 @@ Define how engine, agent runtime, provider routing, data stores, and web visuali
 2. Hosted simulation
 - managed DB, stateless API/realtime pods, worker pool.
 
+3. Hosted tournament arena (planned)
+- adds tournament service, arena projection service, auth provider, and secret management (KMS-backed where available).
+
 ## 10. Observability
 - structured logs with `game_id`, `turn`, `phase`, `player_id`, `event_id`.
 - metrics:
@@ -131,3 +140,6 @@ Define how engine, agent runtime, provider routing, data stores, and web visuali
 - Provider outage degrades gracefully without crashing simulation.
 - Role boundaries prevent hidden/private leakage to spectator clients.
 - Per-player model assignment works with graceful fallback when assigned model is unavailable.
+
+## 12. Next-Phase Link
+- 3D arena and secure multi-table tournament requirements are specified in `docs/threejs-tournament-platform-spec.md`.
