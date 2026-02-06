@@ -99,6 +99,8 @@ class ActionEnvelope:
 
     @classmethod
     def from_obj(cls, obj: dict[str, Any], player_id: str) -> "ActionEnvelope":
+        if not isinstance(obj, dict):
+            obj = {}
         raw_kind = str(obj.get("kind", "pass")).strip().lower().replace("-", "_").replace(" ", "_")
         try:
             kind = ActionKind(raw_kind)
@@ -113,10 +115,13 @@ class ActionEnvelope:
                 attack_plan = AttackPlan.from_obj(obj["attack_plan"])
             except Exception:
                 attack_plan = None
+        payload_obj = obj.get("payload", {})
+        if not isinstance(payload_obj, dict):
+            payload_obj = {}
         return cls(
             player_id=player_id,
             kind=kind,
-            payload=dict(obj.get("payload", {})),
+            payload=payload_obj,
             attack_plan=attack_plan,
             reasoning_summary=str(obj.get("reasoning_summary", "")),
         )
@@ -139,6 +144,12 @@ class PlayerState:
     current_bet: int = 0
     in_hand: bool = True
     hand: list[str] = field(default_factory=list)
+    will: int = 60
+    skill_affect: int = 55
+    focus: float = 100.0
+    stress: float = 0.0
+    resistance_bonus: float = 0.0
+    hand_emotion_shift: dict[str, float] = field(default_factory=dict)
     tempo: int = 0
     exposure: int = 0
     emotions: EmotionState = field(default_factory=EmotionState)

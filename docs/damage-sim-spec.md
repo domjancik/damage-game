@@ -10,7 +10,7 @@ The implementation is intentionally not a canon rules reconstruction. It is a co
 
 ## 2. Implemented Core Rules
 - Players: configurable (default 4).
-- Hand loop: `deal -> ante -> betting -> showdown -> payouts -> life updates`.
+- Hand loop: `deal -> ante -> affect -> betting -> showdown -> payouts -> life updates`.
 - Cards: standard 52-card deck; each active player receives 5 private cards.
 - Betting actions: `fold`, `check`, `call`, `raise`.
 - Stakes:
@@ -20,12 +20,21 @@ The implementation is intentionally not a canon rules reconstruction. It is a co
   - Players who **stay in to showdown and lose** lose 1 Life.
   - Players who **fold** lose chips already committed but do **not** lose a Life.
   - Life 0 eliminates player from future hands.
+  - Side-pot payouts are used for uneven all-ins.
 
 This preserves the key choice: fold to avoid life risk, or stay in and risk a Life.
 
 ## 3. Emotional Manipulation
 - Emotional vectors per player:
   - `fear`, `anger`, `shame`, `confidence`, `tilt`.
+- Affect contest stats:
+  - `will`, `skill_affect`, `focus`, `stress`, `resistance_bonus`.
+- Affect phase actions:
+  - `attack`, `assist`, `guard`, `none`.
+- Cooperation:
+  - Assist effects use diminishing returns and hard cap on team power.
+- Bounds:
+  - per-event emotional delta clamp and per-hand cumulative cap.
 - Aggressive pressure requirement:
   - `raise` actions must include `attack_plan` with emotional target intent.
 - Emotional update is applied on successful pressure actions and affects future routing/behavior.
@@ -62,6 +71,8 @@ Core events emitted to JSONL:
 - `hand_started`
 - `phase_changed`
 - `thinking` (start/end + summary)
+- `affect_intent`
+- `affect_resolved`
 - `provider_call`
 - `action_submitted`
 - `action_resolved`

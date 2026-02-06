@@ -222,6 +222,11 @@
           bankroll: 200,
           current_bet: 0,
           in_hand: true,
+          will: 60,
+          skill_affect: 55,
+          focus: 100,
+          stress: 0,
+          resistance_bonus: 0,
           thinking: false,
           thought: "",
           hand: [],
@@ -239,6 +244,11 @@
       x.bankroll = Number(p.bankroll ?? x.bankroll);
       x.current_bet = Number(p.current_bet ?? x.current_bet);
       x.in_hand = Boolean(p.in_hand ?? x.in_hand);
+      x.will = Number(p.will ?? x.will);
+      x.skill_affect = Number(p.skill_affect ?? x.skill_affect);
+      x.focus = Number(p.focus ?? x.focus);
+      x.stress = Number(p.stress ?? x.stress);
+      x.resistance_bonus = Number(p.resistance_bonus ?? x.resistance_bonus);
       x.thinking = Boolean(p.thinking ?? x.thinking);
       x.hand = p.hand || x.hand;
       x.tempo = Number(p.tempo ?? x.tempo);
@@ -334,6 +344,7 @@
         return `
           <div class="player">
             <div><strong>${pid}</strong>${winnerBadge}${thinkingBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
+            <div class="cards">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)} resist=${p.resistance_bonus.toFixed(1)}</div>
             <div class="cards">thought: ${p.thought || "-"}</div>
             <div class="cards">cards: ${(p.hand || []).join(" ") || "-"}</div>
             ${emoRows}

@@ -29,6 +29,11 @@ All persisted events are JSONL lines with:
 - `current_bet: int`
 - `in_hand: bool`
 - `hand: string[]` (5 card codes, for current dev visualizer)
+- `will: int`
+- `skill_affect: int`
+- `focus: float`
+- `stress: float`
+- `resistance_bonus: float`
 - `tempo: int`
 - `exposure: int`
 - `emotions: EmotionState`
@@ -76,11 +81,35 @@ Validation:
 - `turn: int`
 - `player_id: string`
 - `status: enum[start, end]`
+- `stage?: enum[affect]` (present for affect phase thinking calls)
 - `model?: string` (present on start)
 - `outcome?: string` (present on end)
 - `summary?: string` (short thought summary, present on successful end)
 
-## 5.5 `provider_call`
+## 5.5 `affect_intent`
+- `turn: int`
+- `player_id: string`
+- `intent: {mode, focus_spend, target_player_id, lead_player_id, emotion, summary}`
+
+## 5.6 `affect_resolved`
+- `turn: int`
+- `mode: enum[guard, attack_team]`
+- `player_id?: string` (guard actor)
+- `lead_player_id?: string` (team attack lead)
+- `assistants?: string[]`
+- `target_player_id?: string`
+- `emotion?: string`
+- `focus_spent?: int`
+- `resistance_bonus?: float`
+- `team_power?: float`
+- `attack_score?: float`
+- `defense_score?: float`
+- `raw_delta?: float`
+- `applied_delta?: float`
+- `stake_multiplier?: float`
+- `target_emotions?: EmotionState`
+
+## 5.7 `provider_call`
 - `turn: int`
 - `player_id: string`
 - `requested_model: string`
@@ -89,12 +118,12 @@ Validation:
 - `usage: {prompt_tokens:int, completion_tokens:int, total_tokens:int}`
 - `max_output_tokens: int`
 
-## 5.6 `action_submitted`
+## 5.8 `action_submitted`
 - `turn: int`
 - `player_id: string`
 - `action: ActionEnvelope`
 
-## 5.7 `action_resolved`
+## 5.9 `action_resolved`
 - `turn: int`
 - `player_id: string`
 - `kind: string`
@@ -103,33 +132,34 @@ Validation:
 - `player_state: PlayerPublicState`
 - `attack_plan: AttackPlan|null`
 
-## 5.8 `fold_saved_life`
+## 5.10 `fold_saved_life`
 - `turn: int`
 - `player_id: string`
 
-## 5.9 `life_lost` / `player_eliminated`
+## 5.11 `life_lost` / `player_eliminated`
 - `turn: int`
 - `player_id: string`
 - `remaining_lives: int`
 
-## 5.10 `showdown`
+## 5.12 `showdown`
 - `turn: int`
 - `pot: int`
 - `winners: string[]`
 - `life_losses: int`
+- `payouts: map[player_id -> int]`
 - `rankings: map[player_id -> {category:string, score:int[], hand?:string[]}]`
 
-## 5.11 `hand_ended`
+## 5.13 `hand_ended`
 - `turn: int`
 - `players: PlayerPublicState[]`
 
-## 5.12 `turn_summary`
+## 5.14 `turn_summary`
 - `turn: int`
 - `token_stats: {calls, avg_prompt, avg_completion, avg_total, p95_total, required_context_capacity}`
 - `token_stats_by_model: map[model -> same stats subset]`
 - `context_warning: string|null`
 
-## 5.13 `game_ended`
+## 5.15 `game_ended`
 - `final_state: PlayerPublicState[]`
 - `token_stats: object`
 - `token_stats_by_model: object`

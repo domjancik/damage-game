@@ -52,7 +52,12 @@ class DamageSimulator:
             )
         )
         self.players = [
-            PlayerState(player_id=f"P{i + 1}", bankroll=cfg.starting_bankroll)
+            PlayerState(
+                player_id=f"P{i + 1}",
+                bankroll=cfg.starting_bankroll,
+                will=self.rng.randint(50, 75),
+                skill_affect=self.rng.randint(45, 80),
+            )
             for i in range(cfg.players)
         ]
         self.pot = 0
@@ -100,11 +105,13 @@ class DamageSimulator:
             return
 
         self._setup_hand(participants, turn)
+        self.event_logger.write("phase_changed", {"turn": turn, "phase": "affect"})
+        self._affect_phase(participants, turn)
         self.event_logger.write("phase_changed", {"turn": turn, "phase": "betting"})
         self._betting_round(participants, turn)
         self.event_logger.write("phase_changed", {"turn": turn, "phase": "showdown"})
-        winners, rankings = self._showdown(participants)
-        self._apply_hand_outcome(participants, winners, rankings, turn)
+        winners, rankings, powers = self._showdown(participants)
+        self._apply_hand_outcome(participants, winners, rankings, powers, turn)
 
     def _setup_hand(self, participants: list[PlayerState], turn: int) -> None:
         deck = [r + s for r in RANKS for s in SUITS]
@@ -116,6 +123,10 @@ class DamageSimulator:
             p.in_hand = True
             p.hand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
             p.current_bet = 0
+            p.resistance_bonus = 0.0
+            p.hand_emotion_shift = {"fear": 0.0, "anger": 0.0, "shame": 0.0, "confidence": 0.0, "tilt": 0.0}
+            p.focus = min(100.0, p.focus + 14.0)
+            p.stress = max(0.0, p.stress - 10.0)
 
             ante_paid = min(self.cfg.ante, max(0, p.bankroll))
             p.bankroll -= ante_paid
@@ -136,6 +147,243 @@ class DamageSimulator:
                 "players": [self._public_player_state(p) for p in participants],
             },
         )
+
+    def _affect_phase(self, participants: list[PlayerState], turn: int) -> None:
+        intents: dict[str, dict] = {}
+        for actor in participants:
+            if not actor.in_hand or actor.lives <= 0:
+                continue
+            intent = self._ask_player_for_affect(actor, participants, turn)
+            intents[actor.player_id] = intent
+
+        attacks: dict[str, dict] = {}
+        assists_by_lead: dict[str, list[dict]] = {}
+        for pid, intent in intents.items():
+            mode = intent.get("mode", "none")
+            actor = self._find_player(pid)
+            if actor is None:
+                continue
+            spend = self._commit_focus(actor, int(intent.get("focus_spend", 0)))
+            if mode == "guard":
+                guard = min(30.0, actor.skill_affect * 0.35 + spend * 0.8)
+                actor.resistance_bonus += guard
+                self.event_logger.write(
+                    "affect_resolved",
+                    {
+                        "turn": turn,
+                        "mode": "guard",
+                        "player_id": actor.player_id,
+                        "focus_spent": spend,
+                        "resistance_bonus": actor.resistance_bonus,
+                    },
+                )
+                continue
+            if mode == "attack":
+                target = str(intent.get("target_player_id", ""))
+                if not target or target == actor.player_id:
+                    continue
+                attacks[actor.player_id] = {
+                    "lead_id": actor.player_id,
+                    "target_player_id": target,
+                    "emotion": str(intent.get("emotion", "fear")),
+                    "focus_spend": spend,
+                }
+                continue
+            if mode == "assist":
+                lead = str(intent.get("lead_player_id", ""))
+                target = str(intent.get("target_player_id", ""))
+                if not lead or not target or lead == actor.player_id:
+                    continue
+                assists_by_lead.setdefault(lead, []).append(
+                    {
+                        "assistant_id": actor.player_id,
+                        "target_player_id": target,
+                        "emotion": str(intent.get("emotion", "fear")),
+                        "focus_spend": spend,
+                    }
+                )
+
+        for lead_id, attack in attacks.items():
+            lead = self._find_player(lead_id)
+            target = self._find_player(attack["target_player_id"])
+            if lead is None or target is None or not target.in_hand:
+                continue
+            attack_emotion = normalize_emotion(attack["emotion"])
+            team = [attack]
+            for assist in assists_by_lead.get(lead_id, []):
+                if assist["target_player_id"] == target.player_id and normalize_emotion(assist["emotion"]) == attack_emotion:
+                    team.append(assist)
+
+            lead_power = self._affect_power(lead, int(attack["focus_spend"]))
+            assist_power = 0.0
+            for assist in team[1:]:
+                assistant = self._find_player(assist["assistant_id"])
+                if assistant is not None:
+                    assist_power += self._affect_power(assistant, int(assist["focus_spend"]))
+            team_power = lead_power + 0.6 * assist_power
+            team_power = min(team_power, 2.0 * max(1.0, lead_power))
+
+            stake_base = max(1.0, float(self.cfg.ante * max(1, len(participants))))
+            stake_mult = clampf(1.0 + (self.pot / stake_base) * 0.2, 1.0, 1.8)
+            attack_score = team_power * stake_mult + self.rng.uniform(-5.0, 5.0)
+            defense = target.will + target.resistance_bonus + 0.3 * target.skill_affect + self.rng.uniform(-5.0, 5.0)
+            raw = attack_score - defense
+            delta = clampf(raw / 120.0, -0.25, 0.25)
+
+            capped = self._cap_hand_emotion_delta(target, attack_emotion, delta, 0.6)
+            self._apply_single_emotion_delta(target, attack_emotion, capped)
+            target.stress = clampf(target.stress + abs(capped) * 18.0, 0.0, 100.0)
+
+            self.event_logger.write(
+                "affect_resolved",
+                {
+                    "turn": turn,
+                    "mode": "attack_team",
+                    "lead_player_id": lead_id,
+                    "assistants": [x["assistant_id"] for x in team[1:]],
+                    "target_player_id": target.player_id,
+                    "emotion": attack_emotion,
+                    "team_power": round(team_power, 3),
+                    "attack_score": round(attack_score, 3),
+                    "defense_score": round(defense, 3),
+                    "raw_delta": round(delta, 4),
+                    "applied_delta": round(capped, 4),
+                    "stake_multiplier": round(stake_mult, 3),
+                    "target_emotions": self._emotion_dict(target.emotions),
+                },
+            )
+
+    def _ask_player_for_affect(self, actor: PlayerState, participants: list[PlayerState], turn: int) -> dict:
+        active_ids = [p.player_id for p in participants if p.in_hand and p.player_id != actor.player_id]
+        if not active_ids:
+            return {"mode": "none", "focus_spend": 0}
+        focus_budget = int(min(actor.focus, 20.0 + actor.skill_affect / 5.0))
+        state = {
+            "turn": turn,
+            "pot": self.pot,
+            "self": {
+                "player_id": actor.player_id,
+                "will": actor.will,
+                "skill_affect": actor.skill_affect,
+                "focus": actor.focus,
+                "stress": actor.stress,
+                "focus_budget": focus_budget,
+                "emotions": self._emotion_dict(actor.emotions),
+            },
+            "players": [
+                {
+                    "player_id": p.player_id,
+                    "in_hand": p.in_hand,
+                    "will": p.will,
+                    "skill_affect": p.skill_affect,
+                    "stress": p.stress,
+                }
+                for p in participants
+            ],
+            "valid_emotions": ["fear", "anger", "shame", "confidence", "tilt"],
+            "valid_modes": ["attack", "assist", "guard", "none"],
+            "active_ids": active_ids,
+        }
+        system_prompt = (
+            "You are deciding pre-betting affect tactics in a high-stakes game. Return only JSON."
+        )
+        user_prompt = (
+            "Choose one mode: attack/assist/guard/none. "
+            "Schema: {mode, target_player_id, lead_player_id, emotion, focus_spend, summary}. "
+            "For attack provide target_player_id and emotion. "
+            "For assist provide lead_player_id, target_player_id and emotion. "
+            "focus_spend must be integer between 0 and focus_budget. "
+            f"State: {json.dumps(state)}"
+        )
+        model = self.model_router.pick_action_model(actor_tilt=actor.emotions.tilt, actor_exposure=actor.exposure)
+        max_output_tokens = min(300, self.token_monitor.recommended_max_output_tokens(self.cfg.model_context_window))
+        self.event_logger.write(
+            "thinking",
+            {"turn": turn, "player_id": actor.player_id, "status": "start", "model": model, "stage": "affect"},
+        )
+        try:
+            response = self.client.chat_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=max_output_tokens,
+                model=model,
+            )
+            self.token_monitor.record(actor.player_id, response.model, response.usage)
+        except Exception:
+            self.event_logger.write(
+                "thinking",
+                {"turn": turn, "player_id": actor.player_id, "status": "end", "stage": "affect", "outcome": "provider_failure"},
+            )
+            return {"mode": "none", "focus_spend": 0}
+
+        parsed = self._parse_json(response.content)
+        mode = str(parsed.get("mode", "none")).strip().lower()
+        if mode not in {"attack", "assist", "guard", "none"}:
+            mode = "none"
+        spend = int(parsed.get("focus_spend", 0))
+        spend = max(0, min(spend, focus_budget))
+        out = {
+            "mode": mode,
+            "focus_spend": spend,
+            "target_player_id": str(parsed.get("target_player_id", "")),
+            "lead_player_id": str(parsed.get("lead_player_id", "")),
+            "emotion": normalize_emotion(str(parsed.get("emotion", "fear"))),
+            "summary": str(parsed.get("summary", ""))[:160],
+        }
+        self.event_logger.write(
+            "thinking",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "status": "end",
+                "stage": "affect",
+                "outcome": "intent_selected",
+                "summary": out["summary"],
+            },
+        )
+        self.event_logger.write(
+            "affect_intent",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "intent": out,
+            },
+        )
+        return out
+
+    def _commit_focus(self, actor: PlayerState, requested: int) -> int:
+        budget = int(min(actor.focus, 20.0 + actor.skill_affect / 5.0))
+        spend = max(0, min(requested, budget))
+        actor.focus = max(0.0, actor.focus - float(spend))
+        actor.stress = clampf(actor.stress + spend * 0.15, 0.0, 100.0)
+        return spend
+
+    @staticmethod
+    def _affect_power(actor: PlayerState, spend: int) -> float:
+        power = 0.45 * actor.skill_affect + 0.35 * actor.will + 0.20 * spend - 0.25 * actor.stress
+        return max(0.0, power)
+
+    @staticmethod
+    def _cap_hand_emotion_delta(target: PlayerState, emotion: str, delta: float, cap: float) -> float:
+        used = float(target.hand_emotion_shift.get(emotion, 0.0))
+        remaining_pos = cap - used
+        remaining_neg = -cap - used
+        capped = clampf(delta, remaining_neg, remaining_pos)
+        target.hand_emotion_shift[emotion] = used + capped
+        return capped
+
+    @staticmethod
+    def _apply_single_emotion_delta(target: PlayerState, emotion: str, delta: float) -> None:
+        if emotion == "fear":
+            target.emotions.fear = clampf(target.emotions.fear + delta, -1.0, 1.0)
+        elif emotion == "anger":
+            target.emotions.anger = clampf(target.emotions.anger + delta, -1.0, 1.0)
+        elif emotion == "shame":
+            target.emotions.shame = clampf(target.emotions.shame + delta, -1.0, 1.0)
+        elif emotion == "confidence":
+            target.emotions.confidence = clampf(target.emotions.confidence + delta, -1.0, 1.0)
+        elif emotion == "tilt":
+            target.emotions.tilt = clampf(target.emotions.tilt + delta, -1.0, 1.0)
 
     def _betting_round(self, participants: list[PlayerState], turn: int) -> None:
         raises_seen = True
@@ -352,18 +600,23 @@ class DamageSimulator:
         )
         return was_raise
 
-    def _showdown(self, participants: list[PlayerState]) -> tuple[list[PlayerState], dict[str, dict]]:
+    def _showdown(
+        self, participants: list[PlayerState]
+    ) -> tuple[list[PlayerState], dict[str, dict], dict[str, tuple[int, tuple[int, ...]]]]:
         contenders = [p for p in participants if p.in_hand]
         if len(contenders) == 1:
             only = contenders[0]
             rankings = {only.player_id: {"category": "walk", "score": [99]}}
-            return [only], rankings
+            powers = {only.player_id: (99, (0,))}
+            return [only], rankings, powers
 
         rankings: dict[str, dict] = {}
+        powers: dict[str, tuple[int, tuple[int, ...]]] = {}
         best_score: tuple[int, tuple[int, ...]] | None = None
         winners: list[PlayerState] = []
         for p in contenders:
             category, score, name = evaluate_hand(p.hand)
+            powers[p.player_id] = (category, score)
             rankings[p.player_id] = {
                 "category": name,
                 "score": [category, *score],
@@ -375,22 +628,23 @@ class DamageSimulator:
                 winners = [p]
             elif combined == best_score:
                 winners.append(p)
-        return winners, rankings
+        return winners, rankings, powers
 
     def _apply_hand_outcome(
         self,
         participants: list[PlayerState],
         winners: list[PlayerState],
         rankings: dict[str, dict],
+        powers: dict[str, tuple[int, tuple[int, ...]]],
         turn: int,
     ) -> None:
         winner_ids = {p.player_id for p in winners}
-        share = self.pot // max(1, len(winners))
-        remainder = self.pot - share * len(winners)
-
-        for idx, w in enumerate(winners):
-            payout = share + (1 if idx < remainder else 0)
-            w.bankroll += payout
+        payouts = self._compute_side_pots(participants, powers)
+        for pid, amount in payouts.items():
+            player = self._find_player(pid)
+            if player is not None and amount > 0:
+                player.bankroll += amount
+        winner_ids = {pid for pid, amount in payouts.items() if amount > 0}
 
         life_losses = 0
         for p in participants:
@@ -418,6 +672,7 @@ class DamageSimulator:
                 "pot": self.pot,
                 "winners": list(winner_ids),
                 "life_losses": life_losses,
+                "payouts": payouts,
                 "rankings": rankings,
             },
         )
@@ -432,6 +687,48 @@ class DamageSimulator:
             f"Showdown winners={','.join(sorted(winner_ids))} pot={self.pot} "
             f"losers_life_loss={life_losses}"
         )
+
+    def _compute_side_pots(
+        self, participants: list[PlayerState], powers: dict[str, tuple[int, tuple[int, ...]]]
+    ) -> dict[str, int]:
+        payouts = {p.player_id: 0 for p in participants}
+        contributions = {p.player_id: max(0, int(p.current_bet)) for p in participants}
+        levels = sorted({amt for amt in contributions.values() if amt > 0})
+        if not levels:
+            return payouts
+
+        prev = 0
+        for level in levels:
+            layer_contributors = [p for p in participants if contributions[p.player_id] >= level]
+            if not layer_contributors:
+                prev = level
+                continue
+            tranche = (level - prev) * len(layer_contributors)
+            if tranche <= 0:
+                prev = level
+                continue
+
+            eligible = [p for p in layer_contributors if p.in_hand and p.player_id in powers]
+            if not eligible:
+                prev = level
+                continue
+
+            best_power: tuple[int, tuple[int, ...]] | None = None
+            layer_winners: list[PlayerState] = []
+            for p in eligible:
+                power = powers[p.player_id]
+                if best_power is None or power > best_power:
+                    best_power = power
+                    layer_winners = [p]
+                elif power == best_power:
+                    layer_winners.append(p)
+
+            split = tranche // len(layer_winners)
+            remainder = tranche % len(layer_winners)
+            for i, winner in enumerate(layer_winners):
+                payouts[winner.player_id] += split + (1 if i < remainder else 0)
+            prev = level
+        return payouts
 
     def _log_turn_summary(self, turn: int) -> None:
         stats = self.token_monitor.stats()
@@ -557,6 +854,11 @@ class DamageSimulator:
             "current_bet": player.current_bet,
             "in_hand": player.in_hand,
             "hand": list(player.hand),
+            "will": player.will,
+            "skill_affect": player.skill_affect,
+            "focus": round(player.focus, 3),
+            "stress": round(player.stress, 3),
+            "resistance_bonus": round(player.resistance_bonus, 3),
             "tempo": player.tempo,
             "exposure": player.exposure,
             "emotions": self._emotion_dict(player.emotions),
@@ -622,3 +924,14 @@ def evaluate_hand(cards: list[str]) -> tuple[int, tuple[int, ...], str]:
         kickers = tuple(r for r in ranks if r != pair)
         return (1, (pair, *kickers), "pair")
     return (0, tuple(ranks), "high_card")
+
+
+def clampf(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+def normalize_emotion(value: str) -> str:
+    v = value.strip().lower()
+    if v not in {"fear", "anger", "shame", "confidence", "tilt"}:
+        return "fear"
+    return v
