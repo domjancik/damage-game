@@ -181,7 +181,7 @@
     .bars { display: grid; gap: 4px; }
     .emotion-row {
       display: grid;
-      grid-template-columns: 16px 44px 1fr 34px;
+      grid-template-columns: 18px 1fr 34px;
       gap: 4px;
       align-items: center;
       font-size: 10px;
@@ -189,15 +189,22 @@
       font-family: "IBM Plex Mono", "Consolas", monospace;
     }
     .emotion-icon {
-      width: 14px;
-      height: 14px;
+      width: 16px;
+      height: 16px;
       border-radius: 3px;
       border: 1px solid rgba(255,255,255,0.35);
       background: rgba(255,255,255,0.15);
       text-align: center;
-      line-height: 12px;
-      font-size: 9px;
+      line-height: 14px;
+      font-size: 12px;
       color: #fff;
+    }
+    .emotion-icon img {
+      width: 14px;
+      height: 14px;
+      margin-top: 0;
+      vertical-align: middle;
+      image-rendering: pixelated;
     }
     .bar {
       height: 7px;
@@ -286,6 +293,7 @@
       </div>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous"></script>
   <script>
     const state = {
       gameId: null, turn: 0, pot: 0, highBet: 0, winners: [],
@@ -425,18 +433,40 @@
       c.fillStyle = col.jacket; c.fillRect(10, 28, 28, 14);
       c.fillStyle = col.skin; c.fillRect(14, 10, 20, 18);
       c.fillStyle = "#5a3e2d"; c.fillRect(12, 8, 24, 5);
-      c.fillStyle = col.eye; c.fillRect(18, 16, 4, 3); c.fillRect(26, 16, 4, 3);
-      c.fillStyle = col.iris; c.fillRect(19, 17, 2, 2); c.fillRect(27, 17, 2, 2);
-      c.fillStyle = "#b14633";
       const fear = Number(p.emotions.fear || 0);
       const anger = Number(p.emotions.anger || 0);
       const shame = Number(p.emotions.shame || 0);
       const conf = Number(p.emotions.confidence || 0);
       const tilt = Number(p.emotions.tilt || 0);
+      const eyeH = fear > 0.35 ? 4 : shame > 0.3 ? 2 : 3;
+      c.fillStyle = col.eye; c.fillRect(18, 16, 4, eyeH); c.fillRect(26, 16, 4, eyeH);
+      c.fillStyle = col.iris; c.fillRect(19, 17, 2, 2); c.fillRect(27, 17, 2, 2);
+      const browY = fear > 0.2 ? 13 : 14;
+      c.fillStyle = "#623627";
+      if (anger > 0.25) {
+        c.fillRect(16, browY + 1, 6, 1);
+        c.fillRect(26, browY, 6, 1);
+      } else if (fear > 0.25) {
+        c.fillRect(16, browY, 6, 1);
+        c.fillRect(26, browY + 1, 6, 1);
+      } else {
+        c.fillRect(16, browY, 6, 1);
+        c.fillRect(26, browY, 6, 1);
+      }
+      c.fillStyle = "#b14633";
       const mouthY = fear > 0.3 ? 23 : conf > 0.2 ? 25 : 24;
       const mouthW = anger > 0.3 ? 10 : shame > 0.3 ? 5 : 8;
-      c.fillRect(24 - Math.floor(mouthW / 2), mouthY, mouthW, 1);
-      if (anger > 0.25) { c.fillStyle = "#7c2018"; c.fillRect(17, 14, 6, 1); c.fillRect(25, 14, 6, 1); }
+      const x0 = 24 - Math.floor(mouthW / 2);
+      if (tilt > 0.3) {
+        c.fillRect(x0, mouthY + 1, mouthW, 1);
+      } else if (conf > 0.35) {
+        c.fillRect(x0, mouthY, mouthW, 1);
+        c.fillRect(x0 + 1, mouthY + 1, mouthW - 2, 1);
+      } else if (fear > 0.35) {
+        c.fillRect(x0 + 2, mouthY, mouthW - 4, 1);
+      } else {
+        c.fillRect(x0, mouthY, mouthW, 1);
+      }
       if (shame > 0.25) { c.fillStyle = "#f0a58f"; c.fillRect(14, 20, 3, 2); c.fillRect(31, 20, 3, 2); }
       if (conf > 0.35) { c.fillStyle = "#c8ffd7"; c.fillRect(23, 12, 2, 2); }
       if (tilt > 0.35) { c.fillStyle = "#e35946"; c.fillRect(36, 12, 3, 3); }
@@ -445,22 +475,26 @@
     }
     function emotionRows(p) {
       const conf = [
-        { key: "fear", code: "F", label: "fear", color: "linear-gradient(90deg,#c34d39,#ff9a7c)" },
-        { key: "anger", code: "A", label: "anger", color: "linear-gradient(90deg,#b72e21,#ff6b53)" },
-        { key: "shame", code: "S", label: "shame", color: "linear-gradient(90deg,#8a6db7,#c0a1e6)" },
-        { key: "confidence", code: "C", label: "conf", color: "linear-gradient(90deg,#50a36b,#96e4af)" },
-        { key: "tilt", code: "T", label: "tilt", color: "linear-gradient(90deg,#df8f2f,#ffd078)" }
+        { key: "fear", emoji: "😨", label: "fear", color: "linear-gradient(90deg,#c34d39,#ff9a7c)" },
+        { key: "anger", emoji: "😠", label: "anger", color: "linear-gradient(90deg,#b72e21,#ff6b53)" },
+        { key: "shame", emoji: "😳", label: "shame", color: "linear-gradient(90deg,#8a6db7,#c0a1e6)" },
+        { key: "confidence", emoji: "😎", label: "confidence", color: "linear-gradient(90deg,#50a36b,#96e4af)" },
+        { key: "tilt", emoji: "😵", label: "tilt", color: "linear-gradient(90deg,#df8f2f,#ffd078)" }
       ];
       return conf.map((e) => {
         const v = Number(p.emotions?.[e.key] || 0);
         const pct = Math.max(0, Math.min(100, (v + 1) * 50));
         return `<div class="emotion-row">
-          <span class="emotion-icon">${e.code}</span>
-          <span>${e.label}</span>
+          <span class="emotion-icon" title="${e.label}">${e.emoji}</span>
           <div class="bar"><div style="width:${pct}%;background:${e.color}"></div></div>
           <span>${v.toFixed(2)}</span>
         </div>`;
       }).join("");
+    }
+    function applyTwemoji(root) {
+      if (window.twemoji && root) {
+        window.twemoji.parse(root, { folder: "svg", ext: ".svg" });
+      }
     }
     function colorize(obj) {
       const escaped = JSON.stringify(obj || {}, null, 2).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -520,6 +554,7 @@
       el.speedLabel.textContent = `${replaySpeed().toFixed(2)}x`;
       renderStage();
       renderEvents();
+      applyTwemoji(el.stage);
     }
     async function loadGames() {
       const r = await fetch("/api/games");

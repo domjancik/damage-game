@@ -16,6 +16,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=os.getenv("DAMAGE_FALLBACK_MODELS", "mistral-small-3.2-24b-instruct-2506-mlx"),
         help="Comma-separated fallback model IDs used by the router",
     )
+    parser.add_argument(
+        "--player-models",
+        default=os.getenv("DAMAGE_PLAYER_MODELS", ""),
+        help="Comma-separated per-player model map, e.g. P1=modelA,P2=modelB",
+    )
     parser.add_argument("--api-key", default=os.getenv("DAMAGE_API_KEY"))
     parser.add_argument("--players", type=int, default=4)
     parser.add_argument("--turns", type=int, default=3)
@@ -32,6 +37,17 @@ def _build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = _build_parser().parse_args()
     fallback_models = [m.strip() for m in args.fallback_models.split(",") if m.strip()]
+    player_models: dict[str, str] = {}
+    if args.player_models.strip():
+        for item in args.player_models.split(","):
+            item = item.strip()
+            if not item or "=" not in item:
+                continue
+            k, v = item.split("=", 1)
+            k = k.strip().upper()
+            v = v.strip()
+            if k and v:
+                player_models[k] = v
 
     if args.probe:
         client = OpenAICompatibleClient(
@@ -48,6 +64,7 @@ def main() -> None:
             base_url=args.base_url,
             model=args.model,
             fallback_models=fallback_models,
+            player_models=player_models,
             api_key=args.api_key,
             players=args.players,
             turns=args.turns,

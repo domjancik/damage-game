@@ -30,7 +30,7 @@ This preserves the key choice: fold to avoid life risk, or stay in and risk a Li
 - Affect contest stats:
   - `will`, `skill_affect`, `focus`, `stress`, `resistance_bonus`.
 - Affect phase actions:
-  - `attack`, `assist`, `guard`, `none`.
+  - `attack`, `assist`, `guard`, `self_regulate`, `none`.
 - Cooperation:
   - Assist effects use diminishing returns and hard cap on team power.
 - Bounds:
@@ -64,6 +64,7 @@ Showdown ranking (high to low):
 - Per-call token usage captured and aggregated.
 - Required context capacity estimated from rolling usage (`p95` based heuristic).
 - Context warnings emitted when utilization approaches/exceeds configured window.
+- Per-player model assignment supported (`P1=...` style mapping) with availability fallback warnings.
 
 ## 7. Event Stream (Implemented)
 Core events emitted to JSONL:
@@ -91,6 +92,7 @@ Live/replay visualizer currently renders:
 - all tracked emotions
 - live `thinking...` badge and latest thought summary
 - colorized JSON event feed
+- pixel top-view table visualizer with procedural sprites and replay speed controls (`/table`).
 
 ## 9. Known Gaps
 - No canonical betting rounds/street system yet (single simplified betting cycle with limited passes).

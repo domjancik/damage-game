@@ -24,6 +24,7 @@ class SimulatorConfig:
     turns: int = 3
     model_context_window: int = 8192
     fallback_models: list[str] | None = None
+    player_models: dict[str, str] | None = None
     log_dir: str = "runs"
     seed: int = 42
     ante: int = 10
@@ -51,6 +52,8 @@ class DamageSimulator:
                 fallback_models=list(cfg.fallback_models or []),
             )
         )
+        self.player_models = {k.upper(): v for k, v in (cfg.player_models or {}).items()}
+        self.available_models: set[str] = set()
         self.players = [
             PlayerState(
                 player_id=f"P{i + 1}",
@@ -69,6 +72,10 @@ class DamageSimulator:
             f"Starting simulation game_id={self.game_id} model={self.cfg.model}, "
             f"players={self.cfg.players}, turns={self.cfg.turns}, seed={self.cfg.seed}"
         )
+        if self.player_models:
+            print("Per-player model assignment:")
+            for pid in sorted(self.player_models):
+                print(f"- {pid}: {self.player_models[pid]}")
         print(f"Event log: {self.event_logger.events_path}")
         self.event_logger.write(
             "game_started",
@@ -157,6 +164,7 @@ class DamageSimulator:
             intents[actor.player_id] = intent
 
         attacks: dict[str, dict] = {}
+        pending_assists: list[dict] = []
         assists_by_lead: dict[str, list[dict]] = {}
         for pid, intent in intents.items():
             mode = intent.get("mode", "none")
@@ -164,6 +172,34 @@ class DamageSimulator:
             if actor is None:
                 continue
             spend = self._commit_focus(actor, int(intent.get("focus_spend", 0)))
+            if mode == "self_regulate":
+                # Convert focus into bounded emotional recovery for the actor.
+                recover = min(25.0, spend * 1.4 + actor.skill_affect * 0.15)
+                actor.stress = clampf(actor.stress - recover, 0.0, 100.0)
+
+                tilt_delta = self._cap_hand_emotion_delta(actor, "tilt", -min(0.20, 0.03 + spend / 180.0), 0.6)
+                fear_delta = self._cap_hand_emotion_delta(actor, "fear", -min(0.12, 0.02 + spend / 220.0), 0.6)
+                conf_delta = self._cap_hand_emotion_delta(actor, "confidence", min(0.10, 0.02 + spend / 260.0), 0.6)
+                self._apply_single_emotion_delta(actor, "tilt", tilt_delta)
+                self._apply_single_emotion_delta(actor, "fear", fear_delta)
+                self._apply_single_emotion_delta(actor, "confidence", conf_delta)
+                self.event_logger.write(
+                    "affect_resolved",
+                    {
+                        "turn": turn,
+                        "mode": "self_regulate",
+                        "player_id": actor.player_id,
+                        "focus_spent": spend,
+                        "stress_recovered": round(recover, 3),
+                        "deltas": {
+                            "tilt": round(tilt_delta, 4),
+                            "fear": round(fear_delta, 4),
+                            "confidence": round(conf_delta, 4),
+                        },
+                        "target_emotions": self._emotion_dict(actor.emotions),
+                    },
+                )
+                continue
             if mode == "guard":
                 guard = min(30.0, actor.skill_affect * 0.35 + spend * 0.8)
                 actor.resistance_bonus += guard
@@ -192,15 +228,74 @@ class DamageSimulator:
             if mode == "assist":
                 lead = str(intent.get("lead_player_id", ""))
                 target = str(intent.get("target_player_id", ""))
-                if not lead or not target or lead == actor.player_id:
+                if not target:
                     continue
-                assists_by_lead.setdefault(lead, []).append(
+                if lead == actor.player_id:
+                    lead = ""
+                pending_assists.append(
                     {
                         "assistant_id": actor.player_id,
+                        "lead_player_id": lead,
                         "target_player_id": target,
-                        "emotion": str(intent.get("emotion", "fear")),
+                        "emotion": normalize_emotion(str(intent.get("emotion", "fear"))),
                         "focus_spend": spend,
                     }
+                )
+
+        for assist in pending_assists:
+            lead = assist.get("lead_player_id", "")
+            target = assist["target_player_id"]
+            emotion = assist["emotion"]
+            assigned_lead = ""
+            if lead in attacks:
+                atk = attacks[lead]
+                if atk["target_player_id"] == target and normalize_emotion(atk["emotion"]) == emotion:
+                    assigned_lead = lead
+            if not assigned_lead:
+                for candidate_lead, atk in attacks.items():
+                    if atk["target_player_id"] == target and normalize_emotion(atk["emotion"]) == emotion:
+                        assigned_lead = candidate_lead
+                        break
+            if assigned_lead:
+                assists_by_lead.setdefault(assigned_lead, []).append(assist)
+            else:
+                assistant = self._find_player(assist["assistant_id"])
+                target_player = self._find_player(target)
+                if assistant is None or target_player is None:
+                    self.event_logger.write(
+                        "affect_unpaired_assist",
+                        {
+                            "turn": turn,
+                            "assistant_id": assist["assistant_id"],
+                            "target_player_id": target,
+                            "emotion": emotion,
+                            "outcome": "invalid_target_or_assistant",
+                        },
+                    )
+                    continue
+
+                spend = int(assist["focus_spend"])
+                direct_power = self._affect_power(assistant, spend)
+                # Direct assist should produce visible bounded uplift when focus is committed.
+                raw = 0.02 + (direct_power / 700.0) + (spend / 240.0) - (target_player.stress / 800.0)
+                delta = clampf(raw, 0.01, 0.18)
+                capped = self._cap_hand_emotion_delta(target_player, emotion, delta, 0.6)
+                self._apply_single_emotion_delta(target_player, emotion, capped)
+                target_player.stress = clampf(target_player.stress + abs(capped) * 10.0, 0.0, 100.0)
+
+                self.event_logger.write(
+                    "affect_resolved",
+                    {
+                        "turn": turn,
+                        "mode": "assist_direct",
+                        "assistant_id": assistant.player_id,
+                        "target_player_id": target_player.player_id,
+                        "emotion": emotion,
+                        "focus_spent": spend,
+                        "raw_delta": round(delta, 4),
+                        "applied_delta": round(capped, 4),
+                        "target_emotions": self._emotion_dict(target_player.emotions),
+                    },
                 )
 
         for lead_id, attack in attacks.items():
@@ -281,21 +376,22 @@ class DamageSimulator:
                 for p in participants
             ],
             "valid_emotions": ["fear", "anger", "shame", "confidence", "tilt"],
-            "valid_modes": ["attack", "assist", "guard", "none"],
+            "valid_modes": ["attack", "assist", "guard", "self_regulate", "none"],
             "active_ids": active_ids,
         }
         system_prompt = (
             "You are deciding pre-betting affect tactics in a high-stakes game. Return only JSON."
         )
         user_prompt = (
-            "Choose one mode: attack/assist/guard/none. "
+            "Choose one mode: attack/assist/guard/self_regulate/none. "
             "Schema: {mode, target_player_id, lead_player_id, emotion, focus_spend, summary}. "
             "For attack provide target_player_id and emotion. "
             "For assist provide lead_player_id, target_player_id and emotion. "
+            "For self_regulate provide focus_spend; target fields can be empty. "
             "focus_spend must be integer between 0 and focus_budget. "
             f"State: {json.dumps(state)}"
         )
-        model = self.model_router.pick_action_model(actor_tilt=actor.emotions.tilt, actor_exposure=actor.exposure)
+        model = self._select_model_for_player(actor)
         max_output_tokens = min(300, self.token_monitor.recommended_max_output_tokens(self.cfg.model_context_window))
         self.event_logger.write(
             "thinking",
@@ -318,7 +414,7 @@ class DamageSimulator:
 
         parsed = self._parse_json(response.content)
         mode = str(parsed.get("mode", "none")).strip().lower()
-        if mode not in {"attack", "assist", "guard", "none"}:
+        if mode not in {"attack", "assist", "guard", "self_regulate", "none"}:
             mode = "none"
         spend = int(parsed.get("focus_spend", 0))
         spend = max(0, min(spend, focus_budget))
@@ -330,6 +426,11 @@ class DamageSimulator:
             "emotion": normalize_emotion(str(parsed.get("emotion", "fear"))),
             "summary": str(parsed.get("summary", ""))[:160],
         }
+        if out["mode"] in {"attack", "assist"}:
+            if out["target_player_id"] == actor.player_id or out["target_player_id"] not in active_ids:
+                out["target_player_id"] = active_ids[0]
+        if out["mode"] == "assist" and out["lead_player_id"] == actor.player_id:
+            out["lead_player_id"] = ""
         self.event_logger.write(
             "thinking",
             {
@@ -459,9 +560,7 @@ class DamageSimulator:
             f"State: {json.dumps(public_state)}"
         )
 
-        selected_model = self.model_router.pick_action_model(
-            actor_tilt=actor.emotions.tilt, actor_exposure=actor.exposure
-        )
+        selected_model = self._select_model_for_player(actor)
         max_output_tokens = self.token_monitor.recommended_max_output_tokens(
             self.cfg.model_context_window
         )
@@ -805,11 +904,28 @@ class DamageSimulator:
             available = self.client.list_models()
         except Exception:
             available = []
+        self.available_models = set(available)
         self.model_router.set_available_models(available)
         if available:
             print("Available routed models:")
             for model in available:
                 print(f"- {model}")
+
+    def _select_model_for_player(self, actor: PlayerState) -> str:
+        assigned = self.player_models.get(actor.player_id.upper())
+        if assigned:
+            if self.available_models and assigned not in self.available_models:
+                self.event_logger.write(
+                    "model_assignment_warning",
+                    {
+                        "player_id": actor.player_id,
+                        "assigned_model": assigned,
+                        "reason": "assigned_model_not_available",
+                    },
+                )
+            else:
+                return assigned
+        return self.model_router.pick_action_model(actor_tilt=actor.emotions.tilt, actor_exposure=actor.exposure)
 
     @staticmethod
     def _serialize_action(action: ActionEnvelope) -> dict:

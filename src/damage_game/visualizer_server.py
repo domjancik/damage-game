@@ -26,6 +26,7 @@ class VisualizerServer:
     def _build_handler(self) -> type[BaseHTTPRequestHandler]:
         log_dir = self.log_dir
         static_index = Path(__file__).with_name("static").joinpath("index.html")
+        static_table = Path(__file__).with_name("static").joinpath("table.html")
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
@@ -33,6 +34,9 @@ class VisualizerServer:
                 path = parsed.path
                 if path == "/":
                     self._send_index(static_index)
+                    return
+                if path == "/table":
+                    self._send_index(static_table)
                     return
                 if path == "/api/games":
                     self._send_games(log_dir)
@@ -142,4 +146,3 @@ def _single(qs: dict[str, list[str]], key: str) -> str | None:
     if not values:
         return None
     return values[0]
-

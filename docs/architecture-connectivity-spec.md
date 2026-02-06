@@ -1,6 +1,6 @@
 # System Architecture Connectivity Spec
 
-Version: 0.1
+Version: 0.2
 Status: Draft
 
 ## 1. Purpose
@@ -32,10 +32,10 @@ Define how engine, agent runtime, provider routing, data stores, and web visuali
 - launches games, tournaments, seeds, and simulation workers.
 
 ## 3. Runtime Topology
-- Single-process MVP:
-  - engine + agent runtime + router in one process.
-  - sqlite for state/events.
-  - websocket server in same app.
+- Current implemented topology:
+  - single Python process: engine + agent runtime + provider client + visualizer HTTP server.
+  - append-only JSONL event logs under `runs/`.
+  - SSE stream endpoint for live web updates.
 - Scale-out target:
   - simulation workers separate from API/realtime tier.
   - shared postgres + message broker.
@@ -77,16 +77,20 @@ Define how engine, agent runtime, provider routing, data stores, and web visuali
   - budget + deadline
 
 ## 6.3 Realtime Gateway <-> Visualizer
-- websocket stream of event envelopes + snapshot sync API.
-- resume tokens and backfill by `event_id`.
+- current: SSE stream (`/api/stream`) + replay fetch (`/api/replay`).
+- visualizers:
+  - dashboard view: `/`
+  - pixel top-view table: `/table`
+- replay controls are client-side with deterministic event cursor rebuild.
 
 ## 6.4 API Surface
-- `POST /games`
-- `GET /games/{id}`
-- `GET /games/{id}/events?after=`
-- `GET /games/{id}/snapshot`
-- `WS /games/{id}/stream`
-- `POST /tournaments`
+- implemented:
+  - `GET /api/games`
+  - `GET /api/replay?game_id=...`
+  - `GET /api/stream?game_id=...` (SSE)
+- planned:
+  - `POST /games`
+  - `POST /tournaments`
 
 ## 7. Failure and Fallback Strategy
 - provider timeout:
@@ -126,3 +130,4 @@ Define how engine, agent runtime, provider routing, data stores, and web visuali
 - Visualizer reconnect restores continuity without state corruption.
 - Provider outage degrades gracefully without crashing simulation.
 - Role boundaries prevent hidden/private leakage to spectator clients.
+- Per-player model assignment works with graceful fallback when assigned model is unavailable.

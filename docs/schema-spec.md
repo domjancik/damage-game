@@ -75,7 +75,7 @@ Validation:
 
 ## 5.3 `phase_changed`
 - `turn: int`
-- `phase: enum[betting, showdown]`
+- `phase: enum[affect, betting, showdown]`
 
 ## 5.4 `thinking`
 - `turn: int`
@@ -93,7 +93,7 @@ Validation:
 
 ## 5.6 `affect_resolved`
 - `turn: int`
-- `mode: enum[guard, attack_team]`
+- `mode: enum[guard, attack_team, assist_direct, self_regulate]`
 - `player_id?: string` (guard actor)
 - `lead_player_id?: string` (team attack lead)
 - `assistants?: string[]`
@@ -108,6 +108,8 @@ Validation:
 - `applied_delta?: float`
 - `stake_multiplier?: float`
 - `target_emotions?: EmotionState`
+- `deltas?: map[emotion -> float]` (self-regulation summary)
+- `stress_recovered?: float`
 
 ## 5.7 `provider_call`
 - `turn: int`
@@ -163,6 +165,18 @@ Validation:
 - `final_state: PlayerPublicState[]`
 - `token_stats: object`
 - `token_stats_by_model: object`
+
+## 5.16 `model_assignment_warning`
+- `player_id: string`
+- `assigned_model: string`
+- `reason: string`
+
+## 5.17 `affect_unpaired_assist`
+- `turn: int`
+- `assistant_id: string`
+- `target_player_id: string`
+- `emotion: string`
+- `outcome: string`
 
 ## 6. Replay/Visualizer API Contracts
 - `GET /api/games` -> `{games:[{game_id,event_count,modified_ts}]}`
