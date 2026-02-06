@@ -47,6 +47,8 @@ class SimulatorConfig:
     enable_lives: bool = True
     enable_direct_emoter_attacks: bool = True
     enable_discussion_layer: bool = False
+    enable_offturn_self_regulate: bool = False
+    enable_offturn_chatter: bool = False
 
 
 class DamageSimulator:
@@ -117,6 +119,8 @@ class DamageSimulator:
                 "enable_lives": self.cfg.enable_lives,
                 "enable_direct_emoter_attacks": self.cfg.enable_direct_emoter_attacks,
                 "enable_discussion_layer": self.cfg.enable_discussion_layer,
+                "enable_offturn_self_regulate": self.cfg.enable_offturn_self_regulate,
+                "enable_offturn_chatter": self.cfg.enable_offturn_chatter,
             },
         )
         self._select_player_avatars()
@@ -732,8 +736,111 @@ class DamageSimulator:
                 action = self._ask_player_for_action(actor, participants, turn)
                 was_raise = self._apply_betting_action(actor, action, turn)
                 raises_seen = raises_seen or was_raise
+                self._offturn_responses(trigger_actor=actor, participants=participants, turn=turn)
                 if len([p for p in participants if p.in_hand]) <= 1:
                     return
+
+    def _offturn_responses(self, trigger_actor: PlayerState, participants: list[PlayerState], turn: int) -> None:
+        if not self.cfg.enable_offturn_self_regulate and not self.cfg.enable_offturn_chatter:
+            return
+        observers = [
+            p
+            for p in participants
+            if p.player_id != trigger_actor.player_id and p.in_hand and p.lives > 0
+        ]
+        for observer in observers:
+            if self.cfg.enable_offturn_self_regulate:
+                self._offturn_self_regulate(observer, trigger_actor, turn)
+            if self.cfg.enable_offturn_chatter:
+                self._offturn_chatter(observer, trigger_actor, participants, turn)
+
+    def _offturn_self_regulate(self, observer: PlayerState, trigger_actor: PlayerState, turn: int) -> None:
+        if observer.focus < 1.0:
+            return
+        pressure = max(observer.stress / 100.0, observer.emotions.tilt, observer.emotions.fear)
+        if pressure < 0.18:
+            return
+        spend = int(min(observer.focus, max(1.0, 2.0 + pressure * 8.0)))
+        if spend <= 0:
+            return
+        self._commit_focus(observer, spend)
+        recover = min(12.0, spend * 0.7 + observer.skill_affect * 0.04)
+        observer.stress = clampf(observer.stress - recover, 0.0, 100.0)
+
+        tilt_delta = self._cap_hand_emotion_delta(observer, "tilt", -min(0.10, 0.02 + spend / 320.0), 0.6)
+        fear_delta = self._cap_hand_emotion_delta(observer, "fear", -min(0.08, 0.01 + spend / 360.0), 0.6)
+        self._apply_single_emotion_delta(observer, "tilt", tilt_delta)
+        self._apply_single_emotion_delta(observer, "fear", fear_delta)
+        self.event_logger.write(
+            "offturn_regulation_resolved",
+            {
+                "turn": turn,
+                "player_id": observer.player_id,
+                "trigger_player_id": trigger_actor.player_id,
+                "focus_spent": spend,
+                "stress_recovered": round(recover, 3),
+                "deltas": {
+                    "tilt": round(tilt_delta, 4),
+                    "fear": round(fear_delta, 4),
+                },
+                "target_emotions": self._emotion_dict(observer.emotions),
+            },
+        )
+
+    def _offturn_chatter(
+        self, observer: PlayerState, trigger_actor: PlayerState, participants: list[PlayerState], turn: int
+    ) -> None:
+        if observer.focus < 2.0:
+            return
+        # Keep extra model load bounded.
+        if self.rng.random() > 0.35:
+            return
+        chat = self._ask_player_for_chatter(observer, participants, turn)
+        message = str(chat.get("message", "")).strip()
+        if not message:
+            return
+        target_id = str(chat.get("target_player_id", "")).strip() or trigger_actor.player_id
+        target = self._find_player(target_id)
+        if target is None or target.player_id == observer.player_id or not target.in_hand:
+            target = trigger_actor if trigger_actor.in_hand else None
+        if target is None:
+            return
+        intended = normalize_emotion(str(chat.get("intended_emotion", "fear")))
+        tone = str(chat.get("tone", "neutral")).strip().lower()[:24]
+        self.event_logger.write(
+            "chatter_posted",
+            {
+                "turn": turn,
+                "phase": "offturn",
+                "player_id": observer.player_id,
+                "target_player_id": target.player_id,
+                "trigger_player_id": trigger_actor.player_id,
+                "tone": tone or "neutral",
+                "intended_emotion": intended,
+                "message": message[:180],
+            },
+        )
+        eval_out = self._evaluate_chatter_effect(observer, target, message, intended, turn)
+        effect_emotion = normalize_emotion(str(eval_out.get("impact_emotion", intended)))
+        raw_delta = clampf(float(eval_out.get("delta", 0.0)), -0.18, 0.18)
+        applied = self._cap_hand_emotion_delta(target, effect_emotion, raw_delta, 0.6)
+        self._apply_single_emotion_delta(target, effect_emotion, applied)
+        target.stress = clampf(target.stress + abs(applied) * 8.0, 0.0, 100.0)
+        self.event_logger.write(
+            "chatter_evaluated",
+            {
+                "turn": turn,
+                "phase": "offturn",
+                "speaker_id": observer.player_id,
+                "target_player_id": target.player_id,
+                "trigger_player_id": trigger_actor.player_id,
+                "impact_emotion": effect_emotion,
+                "raw_delta": round(raw_delta, 4),
+                "applied_delta": round(applied, 4),
+                "summary": str(eval_out.get("summary", ""))[:180],
+                "target_emotions": self._emotion_dict(target.emotions),
+            },
+        )
 
     def _ask_player_for_action(
         self, actor: PlayerState, participants: list[PlayerState], turn: int

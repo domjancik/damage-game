@@ -52,6 +52,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Enable chatter phase where players attempt discussion-based emotion effects",
     )
     parser.add_argument(
+        "--offturn-regulate",
+        dest="enable_offturn_self_regulate",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ENABLE_OFFTURN_REGULATE", False),
+        help="Allow players to self-regulate on other players' turns",
+    )
+    parser.add_argument(
+        "--offturn-chat",
+        dest="enable_offturn_chatter",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ENABLE_OFFTURN_CHAT", False),
+        help="Allow players to chatter on other players' turns",
+    )
+    parser.add_argument(
         "--card-style",
         default=os.getenv("DAMAGE_CARD_STYLE", "draw5"),
         choices=["draw5", "holdem"],
@@ -83,6 +97,8 @@ def main() -> None:
             "enable_lives": ["--lives", "--no-lives"],
             "enable_direct_emoter_attacks": ["--direct-emoter-attacks", "--no-direct-emoter-attacks"],
             "enable_discussion_layer": ["--discussion-layer", "--no-discussion-layer"],
+            "enable_offturn_self_regulate": ["--offturn-regulate", "--no-offturn-regulate"],
+            "enable_offturn_chatter": ["--offturn-chat", "--no-offturn-chat"],
         },
         sys.argv[1:],
     )
@@ -126,6 +142,8 @@ def main() -> None:
             enable_lives=args.enable_lives,
             enable_direct_emoter_attacks=args.enable_direct_emoter_attacks,
             enable_discussion_layer=args.enable_discussion_layer,
+            enable_offturn_self_regulate=args.enable_offturn_self_regulate,
+            enable_offturn_chatter=args.enable_offturn_chatter,
             model_context_window=args.context_window,
             log_dir=args.log_dir,
         )
