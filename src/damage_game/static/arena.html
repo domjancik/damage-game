@@ -26,7 +26,7 @@
     .wrap { max-width: 1400px; margin: 0 auto; padding: 14px; }
     .top {
       display: grid;
-      grid-template-columns: 1fr auto auto auto auto;
+      grid-template-columns: 1fr auto auto auto auto auto auto auto;
       gap: 8px;
       align-items: center;
       margin-bottom: 10px;
@@ -102,8 +102,22 @@
       font-size: 12px;
       margin-left: 4px;
     }
+    .replaybar {
+      display: grid;
+      grid-template-columns: auto auto auto auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .replaybar input[type="range"] {
+      width: 100%;
+    }
     @media (max-width: 1080px) {
       .top { grid-template-columns: 1fr 1fr; }
+      .replaybar { grid-template-columns: 1fr 1fr; }
       .grid { grid-template-columns: 1fr; }
       .panel { min-height: 520px; }
       #stage, .list { height: 500px; }
@@ -140,10 +154,22 @@
     <div class="top">
       <select id="focus"></select>
       <button id="refresh">Refresh</button>
+      <button id="replay">Load Replay</button>
       <button id="auto">Auto: on</button>
       <label><input id="liveOnly" type="checkbox"> Live Tables Only</label>
       <label>Scale <input id="scale" type="range" min="70" max="170" value="110"></label>
+      <button id="prev">Prev</button>
+      <button id="next">Next</button>
+      <button id="play">Play</button>
       <a class="home" href="/">dashboard</a>
+    </div>
+    <div class="replaybar">
+      <span id="modeLabel">mode=live</span>
+      <span id="cursorLabel">event 0 / 0</span>
+      <label>speed</label>
+      <input id="speed" type="range" min="1" max="8" value="4">
+      <input id="cursor" type="range" min="0" max="0" value="0">
+      <span id="speedLabel">1.00x</span>
     </div>
     <div class="grid">
       <div class="panel">
@@ -181,7 +207,13 @@
       autoTimer: null,
       focusTable: "__all__",
       worldScale: 1.1,
-      liveOnly: false
+      liveOnly: false,
+      mode: "live",
+      replayEvents: [],
+      replayGameId: "",
+      replayCursor: 0,
+      replayPlaying: false,
+      replayTimer: null
     };
 
     const el = {
@@ -189,10 +221,19 @@
       tables: document.getElementById("tables"),
       summary: document.getElementById("summary"),
       refresh: document.getElementById("refresh"),
+      replay: document.getElementById("replay"),
       auto: document.getElementById("auto"),
       liveOnly: document.getElementById("liveOnly"),
       focus: document.getElementById("focus"),
-      scale: document.getElementById("scale")
+      scale: document.getElementById("scale"),
+      prev: document.getElementById("prev"),
+      next: document.getElementById("next"),
+      play: document.getElementById("play"),
+      modeLabel: document.getElementById("modeLabel"),
+      cursorLabel: document.getElementById("cursorLabel"),
+      cursor: document.getElementById("cursor"),
+      speed: document.getElementById("speed"),
+      speedLabel: document.getElementById("speedLabel")
     };
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -396,6 +437,17 @@
       state.tables = replays.filter(Boolean);
       renderTableList();
       rebuildFocusOptions();
+      if (state.mode === "replay" && state.replayGameId) {
+        const found = state.tables.some((t) => t.gameId === state.replayGameId);
+        if (!found) {
+          stopReplayPlayback();
+          state.mode = "live";
+          state.replayEvents = [];
+          state.replayGameId = "";
+          state.replayCursor = 0;
+        }
+      }
+      updateReplayHud();
       render3D();
     }
 
@@ -763,6 +815,79 @@
       }
     }
 
+    function replaySpeed() {
+      const raw = Number(el.speed.value || 4);
+      const mapped = [0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0];
+      return mapped[Math.max(0, Math.min(mapped.length - 1, raw - 1))];
+    }
+
+    function updateReplayHud() {
+      el.modeLabel.textContent = `mode=${state.mode}${state.replayGameId ? ` game=${state.replayGameId}` : ""}`;
+      el.cursor.max = String(Math.max(0, state.replayEvents.length));
+      el.cursor.value = String(state.replayCursor);
+      el.cursorLabel.textContent = `event ${state.replayCursor} / ${state.replayEvents.length}`;
+      el.speedLabel.textContent = `${replaySpeed().toFixed(2)}x`;
+      el.play.textContent = state.replayPlaying ? "Pause" : "Play";
+    }
+
+    function stopReplayPlayback() {
+      state.replayPlaying = false;
+      if (state.replayTimer) {
+        clearInterval(state.replayTimer);
+        state.replayTimer = null;
+      }
+    }
+
+    function seekReplay(cursor) {
+      if (!state.replayGameId || !state.replayEvents.length) return;
+      const clamped = Math.max(0, Math.min(cursor, state.replayEvents.length));
+      state.replayCursor = clamped;
+      const table = parseGameEvents(state.replayGameId, state.replayEvents.slice(0, clamped));
+      const idx = state.tables.findIndex((t) => t.gameId === state.replayGameId);
+      if (idx >= 0) state.tables[idx] = table;
+      else state.tables.push(table);
+      updateReplayHud();
+      renderTableList();
+      render3D();
+    }
+
+    function startReplayPlayback() {
+      if (state.replayPlaying || !state.replayEvents.length) return;
+      state.replayPlaying = true;
+      const delayMs = Math.max(70, Math.floor(450 / replaySpeed()));
+      state.replayTimer = setInterval(() => {
+        if (state.replayCursor >= state.replayEvents.length) {
+          stopReplayPlayback();
+          updateReplayHud();
+          return;
+        }
+        seekReplay(state.replayCursor + 1);
+      }, delayMs);
+      updateReplayHud();
+    }
+
+    function pickReplayGameId() {
+      if (state.focusTable !== "__all__") return state.focusTable;
+      const filtered = state.tables.filter((t) => !state.liveOnly || t.status === "active");
+      if (!filtered.length) return "";
+      filtered.sort((a, b) => Number(b.stakeValue || 0) - Number(a.stakeValue || 0));
+      return filtered[0].gameId;
+    }
+
+    async function loadReplayForFocus() {
+      const gameId = pickReplayGameId();
+      if (!gameId) return;
+      stopReplayPlayback();
+      const r = await fetch(`/api/replay?game_id=${encodeURIComponent(gameId)}`);
+      const data = await r.json();
+      state.mode = "replay";
+      state.replayGameId = gameId;
+      state.replayEvents = Array.isArray(data.events) ? data.events : [];
+      state.replayCursor = 0;
+      seekReplay(state.replayEvents.length);
+      updateReplayHud();
+    }
+
     function resize() {
       renderer.setSize(el.stage.clientWidth, el.stage.clientHeight);
       camera.aspect = el.stage.clientWidth / el.stage.clientHeight;
@@ -770,10 +895,35 @@
     }
 
     el.refresh.addEventListener("click", loadArenaData);
+    el.replay.addEventListener("click", loadReplayForFocus);
     el.auto.addEventListener("click", () => setAuto(!state.auto));
     el.focus.addEventListener("change", () => {
       state.focusTable = el.focus.value;
       render3D();
+    });
+    el.prev.addEventListener("click", () => {
+      stopReplayPlayback();
+      seekReplay(state.replayCursor - 1);
+    });
+    el.next.addEventListener("click", () => {
+      stopReplayPlayback();
+      seekReplay(state.replayCursor + 1);
+    });
+    el.play.addEventListener("click", () => {
+      if (state.replayPlaying) stopReplayPlayback();
+      else startReplayPlayback();
+      updateReplayHud();
+    });
+    el.cursor.addEventListener("input", () => {
+      stopReplayPlayback();
+      seekReplay(Number(el.cursor.value));
+    });
+    el.speed.addEventListener("input", () => {
+      if (state.replayPlaying) {
+        stopReplayPlayback();
+        startReplayPlayback();
+      }
+      updateReplayHud();
     });
     el.liveOnly.addEventListener("change", () => {
       state.liveOnly = Boolean(el.liveOnly.checked);
@@ -804,6 +954,7 @@
 
     setAuto(true);
     loadArenaData();
+    updateReplayHud();
   </script>
 </body>
 </html>
