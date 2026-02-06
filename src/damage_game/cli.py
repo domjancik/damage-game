@@ -66,6 +66,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Allow players to chatter on other players' turns",
     )
     parser.add_argument(
+        "--blinds",
+        dest="enable_blinds",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ENABLE_BLINDS", False),
+        help="Enable blinds for Texas Hold'em style hands",
+    )
+    parser.add_argument("--small-blind", type=int, default=int(os.getenv("DAMAGE_SMALL_BLIND", "5")))
+    parser.add_argument("--big-blind", type=int, default=int(os.getenv("DAMAGE_BIG_BLIND", "10")))
+    parser.add_argument(
         "--card-style",
         default=os.getenv("DAMAGE_CARD_STYLE", "draw5"),
         choices=["draw5", "holdem"],
@@ -99,6 +108,9 @@ def main() -> None:
             "enable_discussion_layer": ["--discussion-layer", "--no-discussion-layer"],
             "enable_offturn_self_regulate": ["--offturn-regulate", "--no-offturn-regulate"],
             "enable_offturn_chatter": ["--offturn-chat", "--no-offturn-chat"],
+            "enable_blinds": ["--blinds", "--no-blinds"],
+            "small_blind": ["--small-blind"],
+            "big_blind": ["--big-blind"],
         },
         sys.argv[1:],
     )
@@ -144,6 +156,9 @@ def main() -> None:
             enable_discussion_layer=args.enable_discussion_layer,
             enable_offturn_self_regulate=args.enable_offturn_self_regulate,
             enable_offturn_chatter=args.enable_offturn_chatter,
+            enable_blinds=args.enable_blinds,
+            small_blind=max(0, int(args.small_blind)),
+            big_blind=max(0, int(args.big_blind)),
             model_context_window=args.context_window,
             log_dir=args.log_dir,
         )

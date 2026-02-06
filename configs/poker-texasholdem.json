@@ -2,8 +2,13 @@
   "card_style": "holdem",
   "enable_lives": false,
   "enable_direct_emoter_attacks": false,
-  "enable_discussion_layer": false,
-  "ante": 10,
+  "enable_discussion_layer": true,
+  "enable_offturn_self_regulate": false,
+  "enable_offturn_chatter": false,
+  "enable_blinds": true,
+  "small_blind": 5,
+  "big_blind": 10,
+  "ante": 0,
   "min_raise": 10,
   "starting_bankroll": 300
 }

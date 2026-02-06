@@ -49,6 +49,9 @@ class SimulatorConfig:
     enable_discussion_layer: bool = False
     enable_offturn_self_regulate: bool = False
     enable_offturn_chatter: bool = False
+    enable_blinds: bool = False
+    small_blind: int = 5
+    big_blind: int = 10
 
 
 class DamageSimulator:
@@ -95,6 +98,9 @@ class DamageSimulator:
         self.current_high_bet = 0
         self.community_cards: list[str] = []
         self._community_deck_cards: list[str] = []
+        self.current_dealer_id: str = ""
+        self.current_small_blind_id: str = ""
+        self.current_big_blind_id: str = ""
         self._prime_model_router()
 
     def run(self) -> dict:
@@ -122,6 +128,9 @@ class DamageSimulator:
                 "enable_discussion_layer": self.cfg.enable_discussion_layer,
                 "enable_offturn_self_regulate": self.cfg.enable_offturn_self_regulate,
                 "enable_offturn_chatter": self.cfg.enable_offturn_chatter,
+                "enable_blinds": self.cfg.enable_blinds,
+                "small_blind": self.cfg.small_blind,
+                "big_blind": self.cfg.big_blind,
             },
         )
         self._select_player_avatars()
@@ -176,6 +185,8 @@ class DamageSimulator:
             self._discussion_phase(participants, turn)
         self.event_logger.write("phase_changed", {"turn": turn, "phase": "betting"})
         self._betting_round(participants, turn)
+        if self.card_style == "holdem" and len([p for p in participants if p.in_hand]) <= 1:
+            self._reveal_community(turn=turn, street="auto_showdown", count=5)
         self.event_logger.write("phase_changed", {"turn": turn, "phase": "showdown"})
         winners, rankings, powers = self._showdown(participants)
         self._apply_hand_outcome(participants, winners, rankings, powers, turn)
@@ -187,6 +198,9 @@ class DamageSimulator:
         self.current_high_bet = 0
         self.community_cards = []
         self._community_deck_cards = []
+        self.current_dealer_id = ""
+        self.current_small_blind_id = ""
+        self.current_big_blind_id = ""
         if self.card_style == "holdem":
             self._community_deck_cards = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
 
@@ -208,6 +222,8 @@ class DamageSimulator:
             p.hand_contribution += ante_paid
             self.pot += ante_paid
         self.current_high_bet = 0
+        if self.card_style == "holdem" and self.cfg.enable_blinds:
+            self._post_holdem_blinds(participants, turn)
 
         print(
             f"Hand setup: participants={len(participants)} ante={self.cfg.ante} "
@@ -221,7 +237,56 @@ class DamageSimulator:
                 "ante": self.cfg.ante,
                 "card_style": self.card_style,
                 "community_cards": list(self.community_cards),
+                "dealer_id": self.current_dealer_id,
+                "small_blind_id": self.current_small_blind_id,
+                "big_blind_id": self.current_big_blind_id,
+                "small_blind": self.cfg.small_blind,
+                "big_blind": self.cfg.big_blind,
                 "players": [self._public_player_state(p) for p in participants],
+            },
+        )
+
+    def _post_holdem_blinds(self, participants: list[PlayerState], turn: int) -> None:
+        if len(participants) < 2:
+            return
+        dealer_idx = (turn - 1) % len(participants)
+        if len(participants) == 2:
+            small_idx = dealer_idx
+            big_idx = (dealer_idx + 1) % len(participants)
+        else:
+            small_idx = (dealer_idx + 1) % len(participants)
+            big_idx = (dealer_idx + 2) % len(participants)
+        dealer = participants[dealer_idx]
+        sb = participants[small_idx]
+        bb = participants[big_idx]
+        self.current_dealer_id = dealer.player_id
+        self.current_small_blind_id = sb.player_id
+        self.current_big_blind_id = bb.player_id
+
+        sb_paid = min(max(0, self.cfg.small_blind), max(0, sb.bankroll))
+        bb_paid = min(max(0, self.cfg.big_blind), max(0, bb.bankroll))
+        if sb_paid > 0:
+            sb.bankroll -= sb_paid
+            sb.current_bet += sb_paid
+            sb.hand_contribution += sb_paid
+            self.pot += sb_paid
+        if bb_paid > 0:
+            bb.bankroll -= bb_paid
+            bb.current_bet += bb_paid
+            bb.hand_contribution += bb_paid
+            self.pot += bb_paid
+        self.current_high_bet = max(sb.current_bet, bb.current_bet, self.current_high_bet)
+        self.event_logger.write(
+            "blinds_posted",
+            {
+                "turn": turn,
+                "dealer_id": dealer.player_id,
+                "small_blind_id": sb.player_id,
+                "big_blind_id": bb.player_id,
+                "small_blind_paid": sb_paid,
+                "big_blind_paid": bb_paid,
+                "pot": self.pot,
+                "current_high_bet": self.current_high_bet,
             },
         )
 
@@ -734,7 +799,6 @@ class DamageSimulator:
         self._betting_cycle(participants, turn)
 
     def _betting_round_holdem(self, participants: list[PlayerState], turn: int) -> None:
-        self._start_street(participants)
         self._betting_cycle(participants, turn)
         if len([p for p in participants if p.in_hand]) <= 1:
             return

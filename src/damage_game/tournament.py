@@ -27,6 +27,11 @@ class TournamentConfig:
     enable_lives: bool = True
     enable_direct_emoter_attacks: bool = True
     enable_discussion_layer: bool = False
+    enable_offturn_self_regulate: bool = False
+    enable_offturn_chatter: bool = False
+    enable_blinds: bool = False
+    small_blind: int = 5
+    big_blind: int = 10
     model_context_window: int = 8192
     log_dir: str = "runs"
     advance_per_table: int = 1
@@ -113,6 +118,11 @@ class TournamentRunner:
                         enable_lives=self.cfg.enable_lives,
                         enable_direct_emoter_attacks=self.cfg.enable_direct_emoter_attacks,
                         enable_discussion_layer=self.cfg.enable_discussion_layer,
+                        enable_offturn_self_regulate=self.cfg.enable_offturn_self_regulate,
+                        enable_offturn_chatter=self.cfg.enable_offturn_chatter,
+                        enable_blinds=self.cfg.enable_blinds,
+                        small_blind=self.cfg.small_blind,
+                        big_blind=self.cfg.big_blind,
                         model_context_window=self.cfg.model_context_window,
                         log_dir=self.cfg.log_dir,
                     )
