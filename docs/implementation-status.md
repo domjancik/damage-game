@@ -27,6 +27,10 @@ Updated: 2026-02-06
 - Visualizers:
   - dashboard view (`/`) with replay cursor controls and event feed
   - pixel top-view table (`/table`) with procedural sprites, cards, HUD, replay speed slider
+  - 3D arena preview (`/arena`) showing multiple game tables, stake-height pyramid layout, and seat avatars
+- Avatar identity:
+  - per-player `avatar_selected` event at game start
+  - avatar id propagated through player snapshots
 
 ## 2. Event Coverage (Current)
 - core:
@@ -37,6 +41,8 @@ Updated: 2026-02-06
   - `affect_intent`, `affect_resolved`, `affect_unpaired_assist`
 - model/runtime:
   - `thinking`, `provider_call`, `model_assignment_warning`
+- identity:
+  - `avatar_selected`
 - stakes:
   - `fold_saved_life`, `life_lost`, `player_eliminated`
 - telemetry:

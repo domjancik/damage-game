@@ -1,6 +1,6 @@
 # Schema Specification
 
-Version: 0.3 (Implemented + Planned Extensions)
+Version: 0.4 (Implemented + Planned Extensions)
 Status: Draft
 
 ## 1. Purpose
@@ -24,6 +24,7 @@ All persisted events are JSONL lines with:
 
 ## 3.2 PlayerPublicState
 - `player_id: string`
+- `avatar_id: string`
 - `lives: int`
 - `bankroll: int`
 - `current_bet: int`
@@ -178,6 +179,10 @@ Validation:
 - `emotion: string`
 - `outcome: string`
 
+## 5.18 `avatar_selected`
+- `player_id: string`
+- `avatar_id: string`
+
 ## 6. Replay/Visualizer API Contracts
 - `GET /api/games` -> `{games:[{game_id,event_count,modified_ts}]}`
 - `GET /api/replay?game_id=...` -> `{game_id,events:[...envelopes]}`
@@ -239,7 +244,6 @@ These are design targets for the next phase and are not emitted yet.
 - `rotated_ts: ISO8601 UTC string|null`
 
 ## 8.6 Planned Event Types
-- `avatar_selected`
 - `table_spawned`
 - `table_promoted`
 - `player_advanced`

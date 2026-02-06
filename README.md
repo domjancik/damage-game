@@ -61,6 +61,13 @@ uv run --python 3.11 -m damage_game.visualizer_cli --host 127.0.0.1 --port 8787 
 
 Then open `http://127.0.0.1:8787`, select a game, and choose `Load Replay` or `Live Stream`.
 
+3D arena preview (multi-table stake pyramid):
+
+```powershell
+# same visualizer server, then open:
+http://127.0.0.1:8787/arena
+```
+
 ## Documentation
 
 - `docs/implementation-status.md`: current feature coverage, event coverage, known gaps, and next docs.

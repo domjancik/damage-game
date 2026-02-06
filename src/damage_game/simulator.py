@@ -13,6 +13,16 @@ from .token_monitor import TokenMonitor
 
 RANKS = "23456789TJQKA"
 SUITS = "CDHS"
+AVATAR_IDS = [
+    "pilot_ace",
+    "stoic_oracle",
+    "bluff_knight",
+    "cold_mirror",
+    "trickster",
+    "iron_reader",
+    "quiet_storm",
+    "vector_hawk",
+]
 
 
 @dataclass(slots=True)
@@ -87,6 +97,7 @@ class DamageSimulator:
                 "seed": self.cfg.seed,
             },
         )
+        self._select_player_avatars()
 
         for turn in range(1, self.cfg.turns + 1):
             alive = [p for p in self.players if p.lives > 0]
@@ -911,6 +922,99 @@ class DamageSimulator:
             for model in available:
                 print(f"- {model}")
 
+    def _select_player_avatars(self) -> None:
+        for actor in self.players:
+            if actor.lives <= 0:
+                continue
+            actor.avatar_id = self._ask_player_for_avatar(actor)
+            self.event_logger.write(
+                "avatar_selected",
+                {
+                    "player_id": actor.player_id,
+                    "avatar_id": actor.avatar_id,
+                },
+            )
+
+    def _ask_player_for_avatar(self, actor: PlayerState) -> str:
+        fallback = AVATAR_IDS[(sum(ord(c) for c in actor.player_id) + self.cfg.seed) % len(AVATAR_IDS)]
+        model = self._select_model_for_player(actor)
+        prompt_state = {
+            "player_id": actor.player_id,
+            "will": actor.will,
+            "skill_affect": actor.skill_affect,
+            "available_avatars": AVATAR_IDS,
+        }
+        self.event_logger.write(
+            "thinking",
+            {
+                "turn": 0,
+                "player_id": actor.player_id,
+                "status": "start",
+                "model": model,
+                "stage": "avatar",
+            },
+        )
+        try:
+            response = self.client.chat_json(
+                system_prompt="Select a single avatar id. Return JSON only.",
+                user_prompt=(
+                    "Pick avatar_id from available_avatars. "
+                    "Schema: {avatar_id, summary}. "
+                    f"State: {json.dumps(prompt_state)}"
+                ),
+                max_tokens=140,
+                model=model,
+            )
+            self.token_monitor.record(actor.player_id, response.model, response.usage)
+        except Exception:
+            self.event_logger.write(
+                "thinking",
+                {
+                    "turn": 0,
+                    "player_id": actor.player_id,
+                    "status": "end",
+                    "stage": "avatar",
+                    "outcome": "provider_failure",
+                    "summary": f"fallback_avatar={fallback}",
+                },
+            )
+            return fallback
+
+        parsed = self._parse_json(response.content)
+        picked = str(parsed.get("avatar_id", "")).strip()
+        if picked not in AVATAR_IDS:
+            picked = fallback
+        summary = str(parsed.get("summary", "")).strip()[:180]
+        self.event_logger.write(
+            "provider_call",
+            {
+                "turn": 0,
+                "player_id": actor.player_id,
+                "requested_model": model,
+                "resolved_model": response.model,
+                "latency_ms": response.latency_ms,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                },
+                "max_output_tokens": 140,
+                "stage": "avatar",
+            },
+        )
+        self.event_logger.write(
+            "thinking",
+            {
+                "turn": 0,
+                "player_id": actor.player_id,
+                "status": "end",
+                "stage": "avatar",
+                "outcome": "avatar_selected",
+                "summary": summary or f"picked={picked}",
+            },
+        )
+        return picked
+
     def _select_model_for_player(self, actor: PlayerState) -> str:
         assigned = self.player_models.get(actor.player_id.upper())
         if assigned:
@@ -965,6 +1069,7 @@ class DamageSimulator:
     def _public_player_state(self, player: PlayerState) -> dict:
         return {
             "player_id": player.player_id,
+            "avatar_id": player.avatar_id,
             "lives": player.lives,
             "bankroll": player.bankroll,
             "current_bet": player.current_bet,

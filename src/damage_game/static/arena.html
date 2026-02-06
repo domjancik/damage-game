@@ -1,0 +1,571 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Damage 3D Arena Preview</title>
+  <style>
+    :root {
+      --bg: #efe6da;
+      --ink: #172621;
+      --panel: #fff9ef;
+      --line: #ccb9a3;
+      --accent: #cf5a37;
+      --muted: #58716b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 12% 10%, #ffd3a6 0%, transparent 30%),
+        radial-gradient(circle at 84% 8%, #a6ded5 0%, transparent 30%),
+        var(--bg);
+    }
+    .wrap { max-width: 1400px; margin: 0 auto; padding: 14px; }
+    .top {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    select, button, input[type="range"] {
+      height: 38px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      font: inherit;
+      padding: 0 10px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+    button {
+      cursor: pointer;
+      border: none;
+      color: #fff;
+      background: linear-gradient(120deg, var(--accent), #e07b52);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.6fr 1fr;
+      gap: 12px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+      padding: 10px;
+      min-height: 720px;
+    }
+    #stage {
+      width: 100%;
+      height: 700px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #d8c8b6;
+      background: #ede7da;
+    }
+    .meta {
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+    }
+    .list {
+      height: 700px;
+      overflow: auto;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fffdf8;
+    }
+    .row {
+      border-bottom: 1px solid #f1e5d8;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+    }
+    .chips {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #fde4be;
+      color: #5f3902;
+      margin-left: 4px;
+    }
+    .home {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 4px;
+    }
+    @media (max-width: 1080px) {
+      .top { grid-template-columns: 1fr 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      .panel { min-height: 520px; }
+      #stage, .list { height: 500px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <select id="focus"></select>
+      <button id="refresh">Refresh</button>
+      <button id="auto">Auto: on</button>
+      <label>Scale <input id="scale" type="range" min="70" max="170" value="110"></label>
+      <a class="home" href="/">dashboard</a>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <div id="stage"></div>
+        <div class="meta">
+          <span id="summary">loading...</span>
+          <span>3D arena preview (stake pyramid)</span>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="list" id="tables"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.164.1/build/three.module.js";
+    import { OrbitControls } from "https://unpkg.com/three@0.164.1/examples/jsm/controls/OrbitControls.js";
+
+    const AVATAR_COLORS = {
+      pilot_ace: "#d95f43",
+      stoic_oracle: "#5984c7",
+      bluff_knight: "#59a57a",
+      cold_mirror: "#886cc5",
+      trickster: "#cb8d34",
+      iron_reader: "#48929a",
+      quiet_storm: "#ce4f74",
+      vector_hawk: "#6e8b3f",
+      default: "#777f91"
+    };
+
+    const state = {
+      tables: [],
+      auto: true,
+      autoTimer: null,
+      focusTable: "__all__",
+      worldScale: 1.1
+    };
+
+    const el = {
+      stage: document.getElementById("stage"),
+      tables: document.getElementById("tables"),
+      summary: document.getElementById("summary"),
+      refresh: document.getElementById("refresh"),
+      auto: document.getElementById("auto"),
+      focus: document.getElementById("focus"),
+      scale: document.getElementById("scale")
+    };
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(el.stage.clientWidth, el.stage.clientHeight);
+    renderer.shadowMap.enabled = true;
+    el.stage.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color("#ede7da");
+    scene.fog = new THREE.Fog("#ede7da", 30, 90);
+
+    const camera = new THREE.PerspectiveCamera(45, el.stage.clientWidth / el.stage.clientHeight, 0.1, 220);
+    camera.position.set(12, 18, 24);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.maxDistance = 80;
+    controls.minDistance = 8;
+    controls.target.set(0, 2, 0);
+
+    const hemi = new THREE.HemisphereLight("#fff5df", "#8ca7a1", 0.85);
+    scene.add(hemi);
+    const dir = new THREE.DirectionalLight("#fff9ec", 0.95);
+    dir.position.set(10, 18, 6);
+    dir.castShadow = true;
+    scene.add(dir);
+
+    const floor = new THREE.Mesh(
+      new THREE.PlaneGeometry(140, 140, 1, 1),
+      new THREE.MeshStandardMaterial({ color: "#d8cfbf", roughness: 0.95 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const tableLayer = new THREE.Group();
+    scene.add(tableLayer);
+
+    function dominantEmotion(em) {
+      const base = em || {};
+      const items = [
+        ["fear", Number(base.fear || 0)],
+        ["anger", Number(base.anger || 0)],
+        ["shame", Number(base.shame || 0)],
+        ["confidence", Number(base.confidence || 0)],
+        ["tilt", Number(base.tilt || 0)],
+      ];
+      items.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+      return items[0];
+    }
+
+    function mapSeatCount(playerCount) {
+      return playerCount <= 6 ? 6 : 8;
+    }
+
+    function parseGameEvents(gameId, events) {
+      const table = {
+        gameId,
+        turn: 0,
+        phase: "idle",
+        ante: 10,
+        pot: 0,
+        highBet: 0,
+        seatCount: 6,
+        players: {},
+        winners: [],
+        status: "active",
+        stakeValue: 10,
+      };
+      for (const evt of (events || [])) {
+        const p = evt.payload || {};
+        if (evt.type === "game_started") {
+          table.seatCount = mapSeatCount(Number(p.players || 0));
+        }
+        if (typeof p.turn === "number") table.turn = p.turn;
+        if (evt.type === "phase_changed") table.phase = String(p.phase || table.phase);
+        if (evt.type === "hand_started") {
+          table.ante = Number(p.ante || table.ante);
+          table.pot = Number(p.pot || table.pot);
+          for (const pl of (p.players || [])) {
+            table.players[pl.player_id] = {
+              ...(table.players[pl.player_id] || {}),
+              ...pl,
+              thinking: false,
+              thought: (table.players[pl.player_id] || {}).thought || "",
+              avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
+            };
+          }
+        }
+        if (evt.type === "action_resolved" && p.player_state && p.player_id) {
+          table.pot = Number(p.pot || table.pot);
+          table.highBet = Number(p.current_high_bet || table.highBet);
+          table.players[p.player_id] = {
+            ...(table.players[p.player_id] || {}),
+            ...p.player_state,
+            thinking: (table.players[p.player_id] || {}).thinking || false,
+            thought: (table.players[p.player_id] || {}).thought || "",
+            avatar_id: p.player_state.avatar_id || (table.players[p.player_id] || {}).avatar_id || "pilot_ace",
+          };
+        }
+        if (evt.type === "avatar_selected" && p.player_id) {
+          table.players[p.player_id] = {
+            ...(table.players[p.player_id] || { player_id: p.player_id }),
+            avatar_id: String(p.avatar_id || "pilot_ace"),
+          };
+        }
+        if (evt.type === "thinking" && p.player_id) {
+          table.players[p.player_id] = {
+            ...(table.players[p.player_id] || { player_id: p.player_id }),
+            thinking: p.status === "start",
+            thought: typeof p.summary === "string" && p.summary.trim()
+              ? p.summary.trim()
+              : (table.players[p.player_id] || {}).thought || "",
+          };
+        }
+        if (evt.type === "showdown") {
+          table.winners = Array.isArray(p.winners) ? p.winners : [];
+          table.pot = Number(p.pot || table.pot);
+        }
+        if (evt.type === "hand_ended") {
+          for (const pl of (p.players || [])) {
+            table.players[pl.player_id] = {
+              ...(table.players[pl.player_id] || {}),
+              ...pl,
+              thinking: (table.players[pl.player_id] || {}).thinking || false,
+              thought: (table.players[pl.player_id] || {}).thought || "",
+              avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
+            };
+          }
+        }
+        if (evt.type === "game_ended") {
+          table.status = "ended";
+          for (const pl of (p.final_state || [])) {
+            table.players[pl.player_id] = {
+              ...(table.players[pl.player_id] || {}),
+              ...pl,
+              avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
+            };
+          }
+        }
+      }
+      const playersArr = Object.values(table.players);
+      const playerCount = playersArr.length;
+      if (playerCount > 0) {
+        table.seatCount = mapSeatCount(playerCount);
+      }
+      const anteStake = Math.max(1, table.ante * Math.max(1, playerCount));
+      table.stakeValue = Math.max(anteStake, table.pot, table.highBet * Math.max(1, playerCount), 10);
+      return table;
+    }
+
+    async function loadArenaData() {
+      const gamesRes = await fetch("/api/games");
+      const gamesData = await gamesRes.json();
+      const games = Array.isArray(gamesData.games) ? gamesData.games : [];
+      const sliced = games.slice(0, 24);
+      const replays = await Promise.all(
+        sliced.map(async (g) => {
+          try {
+            const r = await fetch(`/api/replay?game_id=${encodeURIComponent(g.game_id)}`);
+            const data = await r.json();
+            return parseGameEvents(g.game_id, data.events || []);
+          } catch {
+            return null;
+          }
+        })
+      );
+      state.tables = replays.filter(Boolean);
+      renderTableList();
+      rebuildFocusOptions();
+      render3D();
+    }
+
+    function buildLabelTexture(lines) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 128;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "rgba(255, 251, 240, 0.92)";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "rgba(66, 50, 38, 0.45)";
+      ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+      ctx.fillStyle = "#1c2d28";
+      ctx.font = "18px monospace";
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], 12, 26 + i * 22);
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      return tex;
+    }
+
+    function seatPosition(index, total, radius) {
+      const angle = (-Math.PI / 2) + (2 * Math.PI * index / Math.max(total, 1));
+      return new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+    }
+
+    function render3D() {
+      while (tableLayer.children.length) {
+        const c = tableLayer.children.pop();
+        c.traverse((node) => {
+          if (node.geometry) node.geometry.dispose();
+          if (node.material) {
+            if (Array.isArray(node.material)) node.material.forEach((m) => m.dispose());
+            else node.material.dispose();
+          }
+        });
+      }
+
+      const list = state.tables.filter((t) => state.focusTable === "__all__" || t.gameId === state.focusTable);
+      const stakes = list.map((t) => Number(t.stakeValue || 1)).sort((a, b) => a - b);
+      const stakeRank = (value) => stakes.indexOf(value);
+      const cols = Math.max(1, Math.ceil(Math.sqrt(Math.max(1, list.length))));
+      const spacing = 14 * state.worldScale;
+
+      list.forEach((t, i) => {
+        const group = new THREE.Group();
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const centeredX = (col - (cols - 1) / 2) * spacing;
+        const centeredZ = (row - (Math.ceil(list.length / cols) - 1) / 2) * spacing;
+        const rank = Math.max(0, stakeRank(Number(t.stakeValue || 1)));
+        const tierY = 0.5 + rank * 1.35 * state.worldScale;
+        group.position.set(centeredX, tierY, centeredZ);
+
+        const tableBase = new THREE.Mesh(
+          new THREE.CylinderGeometry(4.5, 5.0, 1.1, 36),
+          new THREE.MeshStandardMaterial({ color: "#244e45", roughness: 0.65 })
+        );
+        tableBase.castShadow = true;
+        group.add(tableBase);
+
+        const felt = new THREE.Mesh(
+          new THREE.CylinderGeometry(4.1, 4.1, 0.14, 32),
+          new THREE.MeshStandardMaterial({ color: "#2f8d75", roughness: 0.75 })
+        );
+        felt.position.y = 0.62;
+        group.add(felt);
+
+        const infoSprite = new THREE.Sprite(
+          new THREE.SpriteMaterial({ map: buildLabelTexture([
+            t.gameId,
+            `pot=${t.pot} ante=${t.ante}`,
+            `turn=${t.turn} phase=${t.phase}`,
+            `tier=${rank + 1} stake=${Math.round(t.stakeValue)}`,
+          ]) })
+        );
+        infoSprite.scale.set(5.0, 2.5, 1);
+        infoSprite.position.set(0, 3.6, 0);
+        group.add(infoSprite);
+
+        const ids = Object.keys(t.players).sort();
+        for (let seat = 0; seat < t.seatCount; seat++) {
+          const pos = seatPosition(seat, t.seatCount, 5.4);
+          const chair = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.45, 0.45, 0.35, 20),
+            new THREE.MeshStandardMaterial({ color: "#6b4a34", roughness: 0.85 })
+          );
+          chair.position.copy(pos);
+          chair.position.y = 0.25;
+          group.add(chair);
+
+          const pid = ids[seat] || null;
+          if (!pid) continue;
+          const pl = t.players[pid] || {};
+          const avatarId = String(pl.avatar_id || "pilot_ace");
+          const bodyColor = AVATAR_COLORS[avatarId] || AVATAR_COLORS.default;
+          const [dominant, emoVal] = dominantEmotion(pl.emotions || {});
+          const intensity = Math.max(0.15, Math.min(1.0, Math.abs(Number(emoVal || 0))));
+          const headColor = dominant === "confidence" ? "#c7f0cc" :
+            dominant === "anger" ? "#f0b4a8" :
+            dominant === "fear" ? "#d8e5f0" :
+            dominant === "tilt" ? "#f3d2a6" : "#e2d8f4";
+
+          const body = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.28, 0.6, 4, 8),
+            new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.55 })
+          );
+          body.position.copy(pos);
+          body.position.y = 0.9;
+          body.castShadow = true;
+          group.add(body);
+
+          const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.26, 16, 16),
+            new THREE.MeshStandardMaterial({ color: headColor, roughness: 0.42, emissive: headColor, emissiveIntensity: 0.06 + intensity * 0.1 })
+          );
+          head.position.copy(pos);
+          head.position.y = 1.52;
+          head.castShadow = true;
+          group.add(head);
+
+          const label = new THREE.Sprite(
+            new THREE.SpriteMaterial({ map: buildLabelTexture([
+              `${pid} ${avatarId}`,
+              `l=${pl.lives ?? 0} b=${pl.bankroll ?? 0}`,
+              `bet=${pl.current_bet ?? 0} in=${pl.in_hand ? "Y" : "N"}`,
+              `${dominant}=${Number(emoVal || 0).toFixed(2)}`,
+            ]) })
+          );
+          label.scale.set(2.6, 1.35, 1);
+          label.position.copy(pos);
+          label.position.y = 2.55;
+          group.add(label);
+
+          const cards = Array.isArray(pl.hand) ? pl.hand.slice(0, 5) : [];
+          if (cards.length) {
+            cards.forEach((card, ci) => {
+              const c = new THREE.Sprite(
+                new THREE.SpriteMaterial({ map: buildLabelTexture([String(card)]) })
+              );
+              c.scale.set(0.72, 0.44, 1);
+              c.position.copy(pos);
+              c.position.x += (ci - 2) * 0.36;
+              c.position.y = 2.0;
+              c.position.z += 0.58;
+              group.add(c);
+            });
+          }
+        }
+        tableLayer.add(group);
+      });
+
+      const rendered = list.length;
+      const active = list.filter((t) => t.status === "active").length;
+      el.summary.textContent = `tables=${rendered} active=${active} focus=${state.focusTable === "__all__" ? "all" : state.focusTable}`;
+    }
+
+    function renderTableList() {
+      const rows = state.tables
+        .slice()
+        .sort((a, b) => Number(b.stakeValue || 0) - Number(a.stakeValue || 0))
+        .map((t) => {
+          const pids = Object.keys(t.players).sort();
+          const chips = `<span class="chips">stake ${Math.round(t.stakeValue)}</span>`;
+          return `<div class="row">
+            <div><strong>${t.gameId}</strong>${chips}</div>
+            <div>status=${t.status} turn=${t.turn} phase=${t.phase}</div>
+            <div>pot=${t.pot} ante=${t.ante} high_bet=${t.highBet} seats=${t.seatCount}</div>
+            <div>players=${pids.join(",") || "-"}</div>
+            <div>winners=${(t.winners || []).join(",") || "-"}</div>
+          </div>`;
+        })
+        .join("");
+      el.tables.innerHTML = rows || "<div>No games found.</div>";
+    }
+
+    function rebuildFocusOptions() {
+      const current = state.focusTable;
+      const options = ['<option value="__all__">All tables</option>']
+        .concat(state.tables.map((t) => `<option value="${t.gameId}">${t.gameId}</option>`))
+        .join("");
+      el.focus.innerHTML = options;
+      if (current && [...el.focus.options].some((o) => o.value === current)) {
+        el.focus.value = current;
+      } else {
+        el.focus.value = "__all__";
+        state.focusTable = "__all__";
+      }
+    }
+
+    function setAuto(enabled) {
+      state.auto = enabled;
+      el.auto.textContent = `Auto: ${enabled ? "on" : "off"}`;
+      if (state.autoTimer) {
+        clearInterval(state.autoTimer);
+        state.autoTimer = null;
+      }
+      if (enabled) {
+        state.autoTimer = setInterval(loadArenaData, 2500);
+      }
+    }
+
+    function resize() {
+      renderer.setSize(el.stage.clientWidth, el.stage.clientHeight);
+      camera.aspect = el.stage.clientWidth / el.stage.clientHeight;
+      camera.updateProjectionMatrix();
+    }
+
+    el.refresh.addEventListener("click", loadArenaData);
+    el.auto.addEventListener("click", () => setAuto(!state.auto));
+    el.focus.addEventListener("change", () => {
+      state.focusTable = el.focus.value;
+      render3D();
+    });
+    el.scale.addEventListener("input", () => {
+      state.worldScale = Number(el.scale.value || 110) / 100;
+      render3D();
+    });
+    window.addEventListener("resize", resize);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    setAuto(true);
+    loadArenaData();
+  </script>
+</body>
+</html>
