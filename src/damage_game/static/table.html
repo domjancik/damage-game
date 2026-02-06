@@ -296,7 +296,7 @@
   <script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous"></script>
   <script>
     const state = {
-      gameId: null, turn: 0, pot: 0, highBet: 0, winners: [],
+      gameId: null, turn: 0, pot: 0, highBet: 0, winners: [], cardStyle: "draw5", communityCards: [],
       players: {}, events: [], replayEvents: [], cursor: 0,
       source: null, playing: false, timer: null
     };
@@ -353,6 +353,8 @@
       if (typeof p.turn === "number") state.turn = p.turn;
       if (typeof p.pot === "number") state.pot = p.pot;
       if (typeof p.current_high_bet === "number") state.highBet = p.current_high_bet;
+      if (typeof p.card_style === "string") state.cardStyle = p.card_style;
+      if (Array.isArray(p.community_cards)) state.communityCards = p.community_cards.slice();
       if (t === "game_started") {
         state.players = {};
         for (let i = 1; i <= (p.players || 0); i++) initPlayer("P" + i);
@@ -375,6 +377,7 @@
     }
     function resetDerived() {
       state.turn = 0; state.pot = 0; state.highBet = 0; state.winners = [];
+      state.cardStyle = "draw5"; state.communityCards = [];
       state.players = {}; state.events = [];
     }
     function seek(cursor) {
@@ -504,7 +507,8 @@
       );
     }
     function renderStage() {
-      el.center.textContent = `pot=${state.pot}`;
+      const board = state.communityCards.length ? state.communityCards.join(" ") : "-";
+      el.center.textContent = `pot=${state.pot} | style=${state.cardStyle} | board=${board}`;
       el.hudTopLeft.innerHTML = `<div>turn ${state.turn}</div><div>high bet ${state.highBet}</div>`;
       el.hudTopRight.innerHTML = `<div>winners</div><div>${state.winners.join(",") || "-"}</div>`;
       const ids = Object.keys(state.players).sort();

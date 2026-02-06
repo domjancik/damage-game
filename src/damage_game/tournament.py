@@ -23,6 +23,10 @@ class TournamentConfig:
     ante: int = 10
     min_raise: int = 10
     starting_bankroll: int = 200
+    card_style: str = "draw5"
+    enable_lives: bool = True
+    enable_direct_emoter_attacks: bool = True
+    enable_discussion_layer: bool = False
     model_context_window: int = 8192
     log_dir: str = "runs"
     advance_per_table: int = 1
@@ -105,6 +109,10 @@ class TournamentRunner:
                         ante=ante,
                         min_raise=self.cfg.min_raise,
                         starting_bankroll=self.cfg.starting_bankroll,
+                        card_style=self.cfg.card_style,
+                        enable_lives=self.cfg.enable_lives,
+                        enable_direct_emoter_attacks=self.cfg.enable_direct_emoter_attacks,
+                        enable_discussion_layer=self.cfg.enable_discussion_layer,
                         model_context_window=self.cfg.model_context_window,
                         log_dir=self.cfg.log_dir,
                     )

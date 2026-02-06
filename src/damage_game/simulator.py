@@ -5,6 +5,7 @@ import random
 import uuid
 from datetime import datetime, timezone
 from dataclasses import dataclass
+from itertools import combinations
 
 from .event_log import EventLogger
 from .model_router import ModelRouter, ModelRoutingPolicy
@@ -42,6 +43,10 @@ class SimulatorConfig:
     ante: int = 10
     min_raise: int = 10
     starting_bankroll: int = 200
+    card_style: str = "draw5"
+    enable_lives: bool = True
+    enable_direct_emoter_attacks: bool = True
+    enable_discussion_layer: bool = False
 
 
 class DamageSimulator:
@@ -66,6 +71,9 @@ class DamageSimulator:
             )
         )
         self.player_models = {k.upper(): v for k, v in (cfg.player_models or {}).items()}
+        self.card_style = (cfg.card_style or "draw5").strip().lower()
+        if self.card_style not in {"draw5", "holdem"}:
+            self.card_style = "draw5"
         self.available_models: set[str] = set()
         configured_ids = [x.strip() for x in (cfg.player_ids or []) if x.strip()]
         if configured_ids:
@@ -83,12 +91,13 @@ class DamageSimulator:
         ]
         self.pot = 0
         self.current_high_bet = 0
+        self.community_cards: list[str] = []
         self._prime_model_router()
 
     def run(self) -> dict:
         print(
             f"Starting simulation game_id={self.game_id} model={self.cfg.model}, "
-            f"players={len(self.players)}, turns={self.cfg.turns}, seed={self.cfg.seed}"
+            f"players={len(self.players)}, turns={self.cfg.turns}, seed={self.cfg.seed}, card_style={self.card_style}"
         )
         if self.player_models:
             print("Per-player model assignment:")
@@ -98,12 +107,16 @@ class DamageSimulator:
         self.event_logger.write(
             "game_started",
             {
-                "players": self.cfg.players,
+                "players": len(self.players),
                 "player_ids": [p.player_id for p in self.players],
                 "turns": self.cfg.turns,
                 "primary_model": self.cfg.model,
                 "fallback_models": self.cfg.fallback_models or [],
                 "seed": self.cfg.seed,
+                "card_style": self.card_style,
+                "enable_lives": self.cfg.enable_lives,
+                "enable_direct_emoter_attacks": self.cfg.enable_direct_emoter_attacks,
+                "enable_discussion_layer": self.cfg.enable_discussion_layer,
             },
         )
         self._select_player_avatars()
@@ -153,6 +166,9 @@ class DamageSimulator:
         self._setup_hand(participants, turn)
         self.event_logger.write("phase_changed", {"turn": turn, "phase": "affect"})
         self._affect_phase(participants, turn)
+        if self.cfg.enable_discussion_layer:
+            self.event_logger.write("phase_changed", {"turn": turn, "phase": "discussion"})
+            self._discussion_phase(participants, turn)
         self.event_logger.write("phase_changed", {"turn": turn, "phase": "betting"})
         self._betting_round(participants, turn)
         self.event_logger.write("phase_changed", {"turn": turn, "phase": "showdown"})
@@ -164,10 +180,16 @@ class DamageSimulator:
         self.rng.shuffle(deck)
         self.pot = 0
         self.current_high_bet = 0
+        self.community_cards = []
+        if self.card_style == "holdem":
+            self.community_cards = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
 
         for p in participants:
             p.in_hand = True
-            p.hand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
+            if self.card_style == "holdem":
+                p.hand = [deck.pop(), deck.pop()]
+            else:
+                p.hand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()]
             p.current_bet = 0
             p.resistance_bonus = 0.0
             p.hand_emotion_shift = {"fear": 0.0, "anger": 0.0, "shame": 0.0, "confidence": 0.0, "tilt": 0.0}
@@ -190,6 +212,8 @@ class DamageSimulator:
                 "turn": turn,
                 "pot": self.pot,
                 "ante": self.cfg.ante,
+                "card_style": self.card_style,
+                "community_cards": list(self.community_cards),
                 "players": [self._public_player_state(p) for p in participants],
             },
         )
@@ -491,6 +515,177 @@ class DamageSimulator:
         )
         return out
 
+    def _discussion_phase(self, participants: list[PlayerState], turn: int) -> None:
+        for actor in participants:
+            if not actor.in_hand or actor.lives <= 0:
+                continue
+            chat = self._ask_player_for_chatter(actor, participants, turn)
+            message = str(chat.get("message", "")).strip()
+            if not message:
+                continue
+            target_id = str(chat.get("target_player_id", "")).strip()
+            target = self._find_player(target_id)
+            if target is None or target.player_id == actor.player_id or not target.in_hand:
+                choices = [p for p in participants if p.in_hand and p.player_id != actor.player_id]
+                if not choices:
+                    continue
+                target = choices[0]
+                target_id = target.player_id
+            intended = normalize_emotion(str(chat.get("intended_emotion", "fear")))
+            tone = str(chat.get("tone", "neutral")).strip().lower()[:24]
+            self.event_logger.write(
+                "chatter_posted",
+                {
+                    "turn": turn,
+                    "player_id": actor.player_id,
+                    "target_player_id": target_id,
+                    "tone": tone or "neutral",
+                    "intended_emotion": intended,
+                    "message": message[:180],
+                },
+            )
+
+            eval_out = self._evaluate_chatter_effect(actor, target, message, intended, turn)
+            effect_emotion = normalize_emotion(str(eval_out.get("impact_emotion", intended)))
+            raw_delta = float(eval_out.get("delta", 0.0))
+            raw_delta = clampf(raw_delta, -0.18, 0.18)
+            applied = self._cap_hand_emotion_delta(target, effect_emotion, raw_delta, 0.6)
+            self._apply_single_emotion_delta(target, effect_emotion, applied)
+            target.stress = clampf(target.stress + abs(applied) * 8.0, 0.0, 100.0)
+            self.event_logger.write(
+                "chatter_evaluated",
+                {
+                    "turn": turn,
+                    "speaker_id": actor.player_id,
+                    "target_player_id": target.player_id,
+                    "impact_emotion": effect_emotion,
+                    "raw_delta": round(raw_delta, 4),
+                    "applied_delta": round(applied, 4),
+                    "summary": str(eval_out.get("summary", ""))[:180],
+                    "target_emotions": self._emotion_dict(target.emotions),
+                },
+            )
+
+    def _ask_player_for_chatter(self, actor: PlayerState, participants: list[PlayerState], turn: int) -> dict:
+        others = [p for p in participants if p.in_hand and p.player_id != actor.player_id]
+        if not others:
+            return {"message": ""}
+        prompt_state = {
+            "turn": turn,
+            "pot": self.pot,
+            "self": {
+                "player_id": actor.player_id,
+                "emotions": self._emotion_dict(actor.emotions),
+                "will": actor.will,
+                "skill_affect": actor.skill_affect,
+            },
+            "targets": [
+                {
+                    "player_id": p.player_id,
+                    "bankroll": p.bankroll,
+                    "current_bet": p.current_bet,
+                    "stress": p.stress,
+                }
+                for p in others
+            ],
+            "valid_emotions": ["fear", "anger", "shame", "confidence", "tilt"],
+        }
+        model = self._select_model_for_player(actor)
+        self.event_logger.write(
+            "thinking",
+            {"turn": turn, "player_id": actor.player_id, "status": "start", "model": model, "stage": "chatter"},
+        )
+        try:
+            response = self.client.chat_json(
+                system_prompt="Produce a short in-game chatter line for psychological pressure. Return JSON only.",
+                user_prompt=(
+                    "Schema: {target_player_id, intended_emotion, tone, message}. "
+                    "message max 18 words. "
+                    f"State: {json.dumps(prompt_state)}"
+                ),
+                max_tokens=160,
+                model=model,
+            )
+            self.token_monitor.record(actor.player_id, response.model, response.usage)
+        except Exception:
+            self.event_logger.write(
+                "thinking",
+                {"turn": turn, "player_id": actor.player_id, "status": "end", "stage": "chatter", "outcome": "provider_failure"},
+            )
+            return {"message": ""}
+        parsed = self._parse_json(response.content)
+        out = {
+            "target_player_id": str(parsed.get("target_player_id", others[0].player_id)),
+            "intended_emotion": normalize_emotion(str(parsed.get("intended_emotion", "fear"))),
+            "tone": str(parsed.get("tone", "neutral")),
+            "message": str(parsed.get("message", "")).strip()[:180],
+        }
+        self.event_logger.write(
+            "thinking",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "status": "end",
+                "stage": "chatter",
+                "outcome": "chatter_selected",
+                "summary": out["message"][:120],
+            },
+        )
+        return out
+
+    def _evaluate_chatter_effect(
+        self, speaker: PlayerState, target: PlayerState, message: str, intended_emotion: str, turn: int
+    ) -> dict:
+        model = self._select_model_for_player(target)
+        state = {
+            "turn": turn,
+            "speaker_id": speaker.player_id,
+            "target_id": target.player_id,
+            "message": message[:180],
+            "intended_emotion": intended_emotion,
+            "target_emotions": self._emotion_dict(target.emotions),
+            "target_stress": target.stress,
+        }
+        self.event_logger.write(
+            "thinking",
+            {"turn": turn, "player_id": target.player_id, "status": "start", "model": model, "stage": "chatter_eval"},
+        )
+        try:
+            response = self.client.chat_json(
+                system_prompt="Evaluate emotional impact of one line of table chatter. Return JSON only.",
+                user_prompt=(
+                    "Schema: {impact_emotion, delta, summary}. "
+                    "delta must be float in [-0.18,0.18]. Positive increases the emotion. "
+                    f"State: {json.dumps(state)}"
+                ),
+                max_tokens=140,
+                model=model,
+            )
+            self.token_monitor.record(target.player_id, response.model, response.usage)
+            parsed = self._parse_json(response.content)
+        except Exception:
+            parsed = {
+                "impact_emotion": intended_emotion,
+                "delta": clampf(
+                    0.03 + (speaker.skill_affect - target.will) / 380.0 - target.stress / 1200.0,
+                    -0.08,
+                    0.12,
+                ),
+                "summary": "fallback_eval",
+            }
+        self.event_logger.write(
+            "thinking",
+            {
+                "turn": turn,
+                "player_id": target.player_id,
+                "status": "end",
+                "stage": "chatter_eval",
+                "outcome": "evaluated",
+                "summary": str(parsed.get("summary", ""))[:120],
+            },
+        )
+        return parsed
+
     def _commit_focus(self, actor: PlayerState, requested: int) -> int:
         budget = int(min(actor.focus, 20.0 + actor.skill_affect / 5.0))
         spend = max(0, min(requested, budget))
@@ -577,6 +772,8 @@ class DamageSimulator:
             "self": {
                 "player_id": actor.player_id,
                 "hand": actor.hand,
+                "card_style": self.card_style,
+                "community_cards": list(self.community_cards),
                 "bankroll": actor.bankroll,
                 "to_call": to_call,
                 "emotions": self._emotion_dict(actor.emotions),
@@ -711,7 +908,30 @@ class DamageSimulator:
             was_raise = True
             target = self._find_player(action.attack_plan.target_player_id) if action.attack_plan else None
             if target is not None:
-                self._apply_affective_effects(target, action.attack_plan.emotional_intent.value)
+                if self.cfg.enable_direct_emoter_attacks:
+                    before = self._emotion_dict(target.emotions)
+                    self._apply_affective_effects(target, action.attack_plan.emotional_intent.value)
+                    self.event_logger.write(
+                        "direct_emoter_attack_resolved",
+                        {
+                            "turn": turn,
+                            "attacker_id": actor.player_id,
+                            "target_player_id": target.player_id,
+                            "emotion": action.attack_plan.emotional_intent.value,
+                            "before": before,
+                            "after": self._emotion_dict(target.emotions),
+                        },
+                    )
+                else:
+                    self.event_logger.write(
+                        "direct_emoter_attack_skipped",
+                        {
+                            "turn": turn,
+                            "attacker_id": actor.player_id,
+                            "target_player_id": target.player_id,
+                            "reason": "disabled_by_config",
+                        },
+                    )
                 actor.tempo += 1
         else:
             if to_call > 0:
@@ -753,12 +973,18 @@ class DamageSimulator:
         best_score: tuple[int, tuple[int, ...]] | None = None
         winners: list[PlayerState] = []
         for p in contenders:
-            category, score, name = evaluate_hand(p.hand)
+            if self.card_style == "holdem":
+                category, score, name, best_five = evaluate_holdem_hand(p.hand, self.community_cards)
+                shown_hand = list(best_five)
+            else:
+                category, score, name = evaluate_hand(p.hand)
+                shown_hand = list(p.hand)
             powers[p.player_id] = (category, score)
             rankings[p.player_id] = {
                 "category": name,
                 "score": [category, *score],
-                "hand": list(p.hand),
+                "hand": shown_hand,
+                "hole_cards": list(p.hand),
             }
             combined = (category, score)
             if best_score is None or combined > best_score:
@@ -785,24 +1011,34 @@ class DamageSimulator:
         winner_ids = {pid for pid, amount in payouts.items() if amount > 0}
 
         life_losses = 0
-        for p in participants:
-            if p.player_id not in winner_ids and p.in_hand:
-                life_losses += 1
-                p.lives -= 1
-                p.exposure = min(10, p.exposure + 1)
-                if p.lives <= 0:
-                    p.in_hand = False
-                self.event_logger.write(
-                    "player_eliminated" if p.lives <= 0 else "life_lost",
-                    {"turn": turn, "player_id": p.player_id, "remaining_lives": p.lives},
-                )
+        if self.cfg.enable_lives:
+            for p in participants:
+                if p.player_id not in winner_ids and p.in_hand:
+                    life_losses += 1
+                    p.lives -= 1
+                    p.exposure = min(10, p.exposure + 1)
+                    if p.lives <= 0:
+                        p.in_hand = False
+                    self.event_logger.write(
+                        "player_eliminated" if p.lives <= 0 else "life_lost",
+                        {"turn": turn, "player_id": p.player_id, "remaining_lives": p.lives},
+                    )
 
-            elif p.player_id not in winner_ids and not p.in_hand:
-                # Folding exits life risk for this hand; chip loss is already paid into the pot.
-                self.event_logger.write(
-                    "fold_saved_life",
-                    {"turn": turn, "player_id": p.player_id},
-                )
+                elif p.player_id not in winner_ids and not p.in_hand:
+                    # Folding exits life risk for this hand; chip loss is already paid into the pot.
+                    self.event_logger.write(
+                        "fold_saved_life",
+                        {"turn": turn, "player_id": p.player_id},
+                    )
+        else:
+            at_risk = [p.player_id for p in participants if p.player_id not in winner_ids and p.in_hand]
+            self.event_logger.write(
+                "lives_disabled",
+                {
+                    "turn": turn,
+                    "at_risk_players": at_risk,
+                },
+            )
         self.event_logger.write(
             "showdown",
             {
@@ -812,12 +1048,16 @@ class DamageSimulator:
                 "life_losses": life_losses,
                 "payouts": payouts,
                 "rankings": rankings,
+                "card_style": self.card_style,
+                "community_cards": list(self.community_cards),
             },
         )
         self.event_logger.write(
             "hand_ended",
             {
                 "turn": turn,
+                "card_style": self.card_style,
+                "community_cards": list(self.community_cards),
                 "players": [self._public_player_state(p) for p in self.players],
             },
         )
@@ -1173,6 +1413,26 @@ def evaluate_hand(cards: list[str]) -> tuple[int, tuple[int, ...], str]:
         kickers = tuple(r for r in ranks if r != pair)
         return (1, (pair, *kickers), "pair")
     return (0, tuple(ranks), "high_card")
+
+
+def evaluate_holdem_hand(hole_cards: list[str], community_cards: list[str]) -> tuple[int, tuple[int, ...], str, tuple[str, ...]]:
+    all_cards = list(hole_cards) + list(community_cards)
+    if len(all_cards) < 5:
+        padded = all_cards + ["2C"] * (5 - len(all_cards))
+        category, score, name = evaluate_hand(padded[:5])
+        return category, score, name, tuple(padded[:5])
+    best_power: tuple[int, tuple[int, ...]] | None = None
+    best_name = "high_card"
+    best_combo: tuple[str, ...] = tuple(all_cards[:5])
+    for combo in combinations(all_cards, 5):
+        category, score, name = evaluate_hand(list(combo))
+        power = (category, score)
+        if best_power is None or power > best_power:
+            best_power = power
+            best_name = name
+            best_combo = tuple(combo)
+    assert best_power is not None
+    return best_power[0], best_power[1], best_name, best_combo
 
 
 def clampf(value: float, lo: float, hi: float) -> float:

@@ -12,6 +12,9 @@ The implementation is intentionally not a canon rules reconstruction. It is a co
 - Players: configurable (default 4).
 - Hand loop: `deal -> ante -> affect -> betting -> showdown -> payouts -> life updates`.
 - Cards: standard 52-card deck; each active player receives 5 private cards.
+  - configurable via `card_style`:
+    - `draw5`: each active player receives 5 private cards.
+    - `holdem`: each active player receives 2 private hole cards plus 5 community cards on board.
 - Betting actions: `fold`, `check`, `call`, `raise`.
 - Stakes:
   - Everyone antes chips each hand.
@@ -21,6 +24,7 @@ The implementation is intentionally not a canon rules reconstruction. It is a co
   - Players who **fold** lose chips already committed but do **not** lose a Life.
   - Life 0 eliminates player from future hands.
   - Side-pot payouts are used for uneven all-ins.
+  - configurable via `enable_lives` for pure-chip mode.
 
 This preserves the key choice: fold to avoid life risk, or stay in and risk a Life.
 
@@ -31,6 +35,8 @@ This preserves the key choice: fold to avoid life risk, or stay in and risk a Li
   - `will`, `skill_affect`, `focus`, `stress`, `resistance_bonus`.
 - Affect phase actions:
   - `attack`, `assist`, `guard`, `self_regulate`, `none`.
+- Optional discussion/chatter layer:
+  - if enabled, each actor can post short social pressure chatter and target players evaluate emotional effect.
 - Cooperation:
   - Assist effects use diminishing returns and hard cap on team power.
 - Bounds:
@@ -38,6 +44,7 @@ This preserves the key choice: fold to avoid life risk, or stay in and risk a Li
 - Aggressive pressure requirement:
   - `raise` actions must include `attack_plan` with emotional target intent.
 - Emotional update is applied on successful pressure actions and affects future routing/behavior.
+- Direct raise-triggered emotional effects can be disabled via `enable_direct_emoter_attacks`.
 
 ## 4. LLM Decision Contract
 Each actor receives public table state and private hand state and returns JSON:
@@ -59,6 +66,8 @@ Showdown ranking (high to low):
 - two pair
 - pair
 - high card
+
+Hold'em mode uses best 5-card combination from 7 cards (`2 hole + 5 community`).
 
 ## 6. Runtime Telemetry
 - Per-call token usage captured and aggregated.
@@ -84,6 +93,11 @@ Core events emitted to JSONL:
 - `hand_ended`
 - `turn_summary`
 - `game_ended`
+- `chatter_posted`
+- `chatter_evaluated`
+- `direct_emoter_attack_resolved`
+- `direct_emoter_attack_skipped`
+- `lives_disabled`
 
 ## 8. Visualizer Alignment
 Live/replay visualizer currently renders:

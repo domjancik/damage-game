@@ -8,12 +8,18 @@ from typing import Any
 BUILTIN_PROFILES: dict[str, dict[str, Any]] = {
     "damage-game": {
         "card_style": "draw5",
+        "enable_lives": True,
+        "enable_direct_emoter_attacks": True,
+        "enable_discussion_layer": True,
         "ante": 10,
         "min_raise": 10,
         "starting_bankroll": 200,
     },
     "poker-texasholdem": {
         "card_style": "holdem",
+        "enable_lives": False,
+        "enable_direct_emoter_attacks": False,
+        "enable_discussion_layer": False,
         "ante": 10,
         "min_raise": 10,
         "starting_bankroll": 300,

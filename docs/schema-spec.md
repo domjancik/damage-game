@@ -67,11 +67,17 @@ Validation:
 - `primary_model: string`
 - `fallback_models: string[]`
 - `seed: int`
+- `card_style: enum[draw5, holdem]`
+- `enable_lives: bool`
+- `enable_direct_emoter_attacks: bool`
+- `enable_discussion_layer: bool`
 
 ## 5.2 `hand_started`
 - `turn: int`
 - `pot: int`
 - `ante: int`
+- `card_style: enum[draw5, holdem]`
+- `community_cards: string[]` (empty for `draw5`, 5 cards for `holdem`)
 - `players: PlayerPublicState[]`
 
 ## 5.3 `phase_changed`
@@ -150,6 +156,8 @@ Validation:
 - `winners: string[]`
 - `life_losses: int`
 - `payouts: map[player_id -> int]`
+- `card_style: enum[draw5, holdem]`
+- `community_cards: string[]`
 - `rankings: map[player_id -> {category:string, score:int[], hand?:string[]}]`
 
 ## 5.13 `hand_ended`
@@ -182,6 +190,42 @@ Validation:
 ## 5.18 `avatar_selected`
 - `player_id: string`
 - `avatar_id: string`
+
+## 5.19 `direct_emoter_attack_resolved`
+- `turn: int`
+- `attacker_id: string`
+- `target_player_id: string`
+- `emotion: string`
+- `before: EmotionState`
+- `after: EmotionState`
+
+## 5.20 `direct_emoter_attack_skipped`
+- `turn: int`
+- `attacker_id: string`
+- `target_player_id: string`
+- `reason: string`
+
+## 5.21 `chatter_posted`
+- `turn: int`
+- `player_id: string`
+- `target_player_id: string`
+- `tone: string`
+- `intended_emotion: string`
+- `message: string`
+
+## 5.22 `chatter_evaluated`
+- `turn: int`
+- `speaker_id: string`
+- `target_player_id: string`
+- `impact_emotion: string`
+- `raw_delta: float`
+- `applied_delta: float`
+- `summary: string`
+- `target_emotions: EmotionState`
+
+## 5.23 `lives_disabled`
+- `turn: int`
+- `at_risk_players: string[]`
 
 ## 5.19 Tournament Events (Implemented)
 ## `tournament_started`

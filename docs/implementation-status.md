@@ -6,6 +6,7 @@ Updated: 2026-02-06
 ## 1. Implemented Features
 - Poker-like hand loop with stakes:
   - `deal -> ante -> affect -> betting -> showdown`
+  - card styles: `draw5` and `holdem` (2 hole + 5 community)
   - `fold/check/call/raise` actions
   - side-pot split payouts for uneven all-ins
   - life loss only for players who stay in and lose showdown
@@ -15,6 +16,13 @@ Updated: 2026-02-06
   - affect modes: `attack`, `assist`, `guard`, `self_regulate`, `none`
   - cooperation with caps/diminishing returns
   - direct assist fallback (`assist_direct`) for unpaired assists
+  - optional discussion/chatter layer (`chatter_posted` + `chatter_evaluated`)
+  - configurable direct raise-triggered emotional effects (`enable_direct_emoter_attacks`)
+- Rule toggles:
+  - `enable_lives`
+  - `enable_direct_emoter_attacks`
+  - `enable_discussion_layer`
+  - profile presets (`damage-game`, `poker-texasholdem`) with optional JSON overrides
 - LLM runtime:
   - OpenAI-compatible client (LM Studio target)
   - model fallback routing

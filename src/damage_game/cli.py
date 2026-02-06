@@ -31,6 +31,27 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-raise", type=int, default=int(os.getenv("DAMAGE_MIN_RAISE", "10")))
     parser.add_argument("--starting-bankroll", type=int, default=int(os.getenv("DAMAGE_STARTING_BANKROLL", "200")))
     parser.add_argument(
+        "--lives",
+        dest="enable_lives",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ENABLE_LIVES", True),
+        help="Enable life-loss elimination rule",
+    )
+    parser.add_argument(
+        "--direct-emoter-attacks",
+        dest="enable_direct_emoter_attacks",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ENABLE_DIRECT_EMOTER_ATTACKS", True),
+        help="Enable direct emotional effects on successful raises",
+    )
+    parser.add_argument(
+        "--discussion-layer",
+        dest="enable_discussion_layer",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ENABLE_DISCUSSION_LAYER", False),
+        help="Enable chatter phase where players attempt discussion-based emotion effects",
+    )
+    parser.add_argument(
         "--card-style",
         default=os.getenv("DAMAGE_CARD_STYLE", "draw5"),
         choices=["draw5", "holdem"],
@@ -59,6 +80,9 @@ def main() -> None:
             "ante": ["--ante"],
             "min_raise": ["--min-raise"],
             "starting_bankroll": ["--starting-bankroll"],
+            "enable_lives": ["--lives", "--no-lives"],
+            "enable_direct_emoter_attacks": ["--direct-emoter-attacks", "--no-direct-emoter-attacks"],
+            "enable_discussion_layer": ["--discussion-layer", "--no-discussion-layer"],
         },
         sys.argv[1:],
     )
@@ -99,11 +123,21 @@ def main() -> None:
             min_raise=args.min_raise,
             starting_bankroll=args.starting_bankroll,
             card_style=args.card_style,
+            enable_lives=args.enable_lives,
+            enable_direct_emoter_attacks=args.enable_direct_emoter_attacks,
+            enable_discussion_layer=args.enable_discussion_layer,
             model_context_window=args.context_window,
             log_dir=args.log_dir,
         )
     )
     sim.run()
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 if __name__ == "__main__":

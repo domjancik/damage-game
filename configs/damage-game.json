@@ -1,5 +1,8 @@
 {
   "card_style": "draw5",
+  "enable_lives": true,
+  "enable_direct_emoter_attacks": true,
+  "enable_discussion_layer": true,
   "ante": 10,
   "min_raise": 10,
   "starting_bankroll": 200

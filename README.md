@@ -45,6 +45,13 @@ uv run --python 3.11 -m damage_game.cli --profile poker-texasholdem
 uv run --python 3.11 -m damage_game.cli --profile poker-texasholdem --profile-file configs/poker-texasholdem.json
 ```
 
+Rule toggles for experiments:
+
+```powershell
+# Disable lives (pure chips), disable direct raise emotion effects, enable discussion/chatter layer
+uv run --python 3.11 -m damage_game.cli --no-lives --no-direct-emoter-attacks --discussion-layer
+```
+
 Tournament mode (single-elimination style, 6-max/8-max tables):
 
 ```powershell

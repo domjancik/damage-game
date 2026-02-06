@@ -263,6 +263,8 @@
         winners: [],
         status: "active",
         stakeValue: 10,
+        cardStyle: "draw5",
+        communityCards: [],
       };
       for (const evt of (events || [])) {
         const p = evt.payload || {};
@@ -270,6 +272,8 @@
           table.seatCount = mapSeatCount(Number(p.players || 0));
         }
         if (typeof p.turn === "number") table.turn = p.turn;
+        if (typeof p.card_style === "string") table.cardStyle = p.card_style;
+        if (Array.isArray(p.community_cards)) table.communityCards = p.community_cards.slice();
         if (evt.type === "phase_changed") table.phase = String(p.phase || table.phase);
         if (evt.type === "hand_started") {
           table.ante = Number(p.ante || table.ante);
@@ -523,7 +527,7 @@
             new THREE.SpriteMaterial({ map: buildLabelTexture([
               t.gameId,
               `pot=${t.pot} ante=${t.ante}`,
-              `turn=${t.turn} phase=${t.phase}`,
+              `turn=${t.turn} phase=${t.phase} style=${t.cardStyle}`,
               `tier=${tierIndex + 1}/${tiers.length} stake=${Math.round(t.stakeValue)}`,
             ]) })
           );
@@ -609,6 +613,26 @@
                 group.add(mesh);
               });
             }
+          }
+          const board = Array.isArray(t.communityCards) ? t.communityCards.slice(0, 5) : [];
+          if (board.length) {
+            board.forEach((card, bi) => {
+              const mesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.46, 0.62, 0.035),
+                [
+                  new THREE.MeshStandardMaterial({ color: "#efe5d4" }),
+                  new THREE.MeshStandardMaterial({ color: "#efe5d4" }),
+                  new THREE.MeshStandardMaterial({ color: "#efe5d4" }),
+                  new THREE.MeshStandardMaterial({ color: "#efe5d4" }),
+                  new THREE.MeshStandardMaterial({ map: cardTexture(card), roughness: 0.6 }),
+                  new THREE.MeshStandardMaterial({ color: "#d9cbb6" }),
+                ]
+              );
+              mesh.position.set((bi - (board.length - 1) / 2) * 0.56, 0.83, 0);
+              mesh.rotation.x = -0.2;
+              mesh.castShadow = true;
+              group.add(mesh);
+            });
           }
           tableLayer.add(group);
         });

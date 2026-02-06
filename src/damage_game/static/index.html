@@ -220,6 +220,8 @@
       pot: 0,
       highBet: 0,
       winners: [],
+      cardStyle: "draw5",
+      communityCards: [],
       players: {},
       events: [],
       source: null,
@@ -297,6 +299,8 @@
       if (typeof p.turn === "number") state.turn = p.turn;
       if (typeof p.pot === "number") state.pot = p.pot;
       if (typeof p.current_high_bet === "number") state.highBet = p.current_high_bet;
+      if (typeof p.card_style === "string") state.cardStyle = p.card_style;
+      if (Array.isArray(p.community_cards)) state.communityCards = p.community_cards.slice();
 
       if (t === "game_started") {
         state.players = {};
@@ -388,7 +392,8 @@
     }
 
     function renderTable() {
-      el.table.textContent = `turn=${state.turn}\npot=${state.pot}\nhigh_bet=${state.highBet}\nwinners=${state.winners.join(",") || "-"}`;
+      const board = state.communityCards.length ? state.communityCards.join(" ") : "-";
+      el.table.textContent = `turn=${state.turn}\npot=${state.pot}\nhigh_bet=${state.highBet}\ncard_style=${state.cardStyle}\nboard=${board}\nwinners=${state.winners.join(",") || "-"}`;
     }
 
     function renderEvents() {
