@@ -109,6 +109,31 @@
       #stage, .list { height: 500px; }
     }
   </style>
+  <script>
+    window.addEventListener("error", (evt) => {
+      const box = document.createElement("div");
+      box.style.position = "fixed";
+      box.style.left = "12px";
+      box.style.bottom = "12px";
+      box.style.zIndex = "9999";
+      box.style.maxWidth = "70vw";
+      box.style.padding = "10px 12px";
+      box.style.borderRadius = "8px";
+      box.style.border = "1px solid #d79d8f";
+      box.style.background = "#fff1ed";
+      box.style.color = "#6b1d0b";
+      box.style.font = "12px monospace";
+      box.textContent = `arena render error: ${evt.message || "unknown"}`;
+      document.body.appendChild(box);
+    });
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.164.1/build/three.module.js"
+      }
+    }
+  </script>
 </head>
 <body>
   <div class="wrap">
@@ -134,7 +159,7 @@
   </div>
 
   <script type="module">
-    import * as THREE from "https://unpkg.com/three@0.164.1/build/three.module.js";
+    import * as THREE from "three";
     import { OrbitControls } from "https://unpkg.com/three@0.164.1/examples/jsm/controls/OrbitControls.js";
 
     const AVATAR_COLORS = {
