@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 
 from .provider_openai_compat import OpenAICompatibleClient, OpenAICompatibleConfig
+from .profiles import apply_profile_overrides, list_profiles, load_profile
 from .simulator import DamageSimulator, SimulatorConfig
 
 
@@ -28,14 +30,38 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ante", type=int, default=int(os.getenv("DAMAGE_ANTE", "10")))
     parser.add_argument("--min-raise", type=int, default=int(os.getenv("DAMAGE_MIN_RAISE", "10")))
     parser.add_argument("--starting-bankroll", type=int, default=int(os.getenv("DAMAGE_STARTING_BANKROLL", "200")))
+    parser.add_argument(
+        "--card-style",
+        default=os.getenv("DAMAGE_CARD_STYLE", "draw5"),
+        choices=["draw5", "holdem"],
+        help="Card style: 5-card draw or Texas Hold'em style (2 hole + 5 community)",
+    )
     parser.add_argument("--context-window", type=int, default=8192)
     parser.add_argument("--log-dir", default=os.getenv("DAMAGE_LOG_DIR", "runs"))
+    parser.add_argument("--profile", default=os.getenv("DAMAGE_PROFILE", "damage-game"), choices=list_profiles())
+    parser.add_argument(
+        "--profile-file",
+        default=os.getenv("DAMAGE_PROFILE_FILE", ""),
+        help="Optional JSON profile file to extend/override profile fields",
+    )
     parser.add_argument("--probe", action="store_true", help="Only probe model connectivity")
     return parser
 
 
 def main() -> None:
     args = _build_parser().parse_args()
+    profile = load_profile(args.profile, args.profile_file or None)
+    apply_profile_overrides(
+        args,
+        profile,
+        {
+            "card_style": ["--card-style"],
+            "ante": ["--ante"],
+            "min_raise": ["--min-raise"],
+            "starting_bankroll": ["--starting-bankroll"],
+        },
+        sys.argv[1:],
+    )
     fallback_models = [m.strip() for m in args.fallback_models.split(",") if m.strip()]
     player_models: dict[str, str] = {}
     if args.player_models.strip():
@@ -72,6 +98,7 @@ def main() -> None:
             ante=args.ante,
             min_raise=args.min_raise,
             starting_bankroll=args.starting_bankroll,
+            card_style=args.card_style,
             model_context_window=args.context_window,
             log_dir=args.log_dir,
         )

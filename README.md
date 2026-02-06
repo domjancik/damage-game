@@ -31,6 +31,20 @@ Poker-like stakes tuning:
 uv run --python 3.11 -m damage_game.cli --players 4 --turns 5 --seed 42 --ante 10 --min-raise 10 --starting-bankroll 200
 ```
 
+Texas Hold'em style (2 hole cards + 5 community cards):
+
+```powershell
+uv run --python 3.11 -m damage_game.cli --players 4 --turns 3 --card-style holdem
+```
+
+Profile-based gameplay presets:
+
+```powershell
+uv run --python 3.11 -m damage_game.cli --profile damage-game
+uv run --python 3.11 -m damage_game.cli --profile poker-texasholdem
+uv run --python 3.11 -m damage_game.cli --profile poker-texasholdem --profile-file configs/poker-texasholdem.json
+```
+
 Tournament mode (single-elimination style, 6-max/8-max tables):
 
 ```powershell

@@ -1,0 +1,6 @@
+{
+  "card_style": "holdem",
+  "ante": 10,
+  "min_raise": 10,
+  "starting_bankroll": 300
+}
