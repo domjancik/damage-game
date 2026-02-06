@@ -29,7 +29,7 @@
     .wrap { max-width: 1320px; margin: 0 auto; padding: 16px; }
     .top {
       display: grid;
-      grid-template-columns: 1fr auto auto auto auto auto;
+      grid-template-columns: 1fr auto auto auto auto auto auto;
       gap: 8px;
       align-items: center;
     }
@@ -80,7 +80,7 @@
     }
     .table-stage {
       position: relative;
-      min-height: 640px;
+      min-height: 720px;
       border-radius: 14px;
       background:
         radial-gradient(ellipse at center, var(--felt-b) 0%, var(--felt-a) 100%);
@@ -125,7 +125,7 @@
     }
     .seat {
       position: absolute;
-      width: 260px;
+      width: 220px;
       padding: 8px;
       border: 1px solid rgba(255,255,255,0.25);
       border-radius: 10px;
@@ -214,6 +214,42 @@
       background: rgba(221, 247, 255, 0.17);
       color: #ddf6ff;
     }
+    .fullscreen-active .table-stage {
+      min-height: calc(100vh - 190px);
+    }
+    .fullscreen-active .log {
+      height: calc(100vh - 190px);
+    }
+    .table-focus .layout {
+      display: block;
+      position: relative;
+    }
+    .table-focus .layout > .panel:first-child {
+      margin: 0;
+    }
+    .table-focus .layout > .panel:last-child {
+      position: fixed;
+      right: 16px;
+      bottom: 14px;
+      width: min(440px, 42vw);
+      height: min(52vh, 520px);
+      z-index: 20;
+      background: rgba(255, 250, 242, 0.72);
+      border: 1px solid rgba(204, 185, 163, 0.76);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+      backdrop-filter: blur(4px);
+      padding: 8px;
+    }
+    .table-focus .layout > .panel:last-child .log {
+      height: calc(100% - 8px);
+      background: rgba(255, 253, 247, 0.62);
+    }
+    .table-focus .table-stage {
+      min-height: calc(100vh - 148px);
+    }
+    .table-focus .panel {
+      border-color: rgba(204, 185, 163, 0.8);
+    }
     .bars { display: grid; gap: 4px; }
     .emotion-row {
       display: grid;
@@ -299,6 +335,7 @@
       <button id="prev">Prev</button>
       <button id="next">Next</button>
       <button id="play">Play</button>
+      <button id="fullscreen">Focus Table</button>
     </div>
     <div class="mini">
       <div class="row">
@@ -334,7 +371,7 @@
     const state = {
       gameId: null, turn: 0, pot: 0, highBet: 0, winners: [], cardStyle: "draw5", communityCards: [],
       players: {}, events: [], replayEvents: [], cursor: 0,
-      source: null, playing: false, timer: null
+      source: null, playing: false, timer: null, tableFocus: false
     };
     const el = {
       games: document.getElementById("games"),
@@ -346,6 +383,7 @@
       cursor: document.getElementById("cursor"),
       speed: document.getElementById("speed"),
       speedLabel: document.getElementById("speedLabel"),
+      fullscreen: document.getElementById("fullscreen"),
       cursorLabel: document.getElementById("cursorLabel"),
       center: document.getElementById("center"),
       stage: document.getElementById("tableStage"),
@@ -355,6 +393,12 @@
       hudBottomRight: document.getElementById("hudBottomRight"),
       events: document.getElementById("events")
     };
+    function setTableFocus(enabled) {
+      state.tableFocus = Boolean(enabled);
+      document.body.classList.toggle("table-focus", state.tableFocus);
+      el.fullscreen.textContent = state.tableFocus ? "Exit Focus" : "Focus Table";
+      render();
+    }
     function initPlayer(id) {
       if (!state.players[id]) {
         state.players[id] = {
@@ -460,15 +504,27 @@
     function seatPositions(count) {
       const cx = el.stage.clientWidth / 2;
       const cy = el.stage.clientHeight / 2;
-      const rx = Math.min(360, cx - 150);
-      const ry = Math.min(250, cy - 120);
+      const metrics = seatMetrics(count);
+      const rx = Math.max(120, Math.min(440, cx - (metrics.width / 2) - 14));
+      const ry = Math.max(100, Math.min(300, cy - metrics.height - 14));
       const ids = Object.keys(state.players).sort();
       const out = {};
       ids.forEach((pid, i) => {
         const a = (-Math.PI / 2) + (2 * Math.PI * i / Math.max(1, count));
-        out[pid] = { x: cx + Math.cos(a) * rx - 130, y: cy + Math.sin(a) * ry - 68 };
+        out[pid] = {
+          x: cx + Math.cos(a) * rx - metrics.width / 2,
+          y: cy + Math.sin(a) * ry - metrics.height / 2,
+          width: metrics.width
+        };
       });
       return out;
+    }
+    function seatMetrics(count) {
+      if (count >= 8) return { width: 176, height: 184 };
+      if (count >= 7) return { width: 190, height: 190 };
+      if (count >= 6) return { width: 206, height: 198 };
+      if (count >= 5) return { width: 220, height: 204 };
+      return { width: 246, height: 212 };
     }
     function spriteColors(p, pid) {
       const h = (pid.charCodeAt(1) * 37 + p.will * 3) % 360;
@@ -563,6 +619,7 @@
       el.hudTopLeft.innerHTML = `<div>turn ${state.turn}</div><div>high bet ${state.highBet}</div>`;
       el.hudTopRight.innerHTML = `<div>winners</div><div>${state.winners.join(",") || "-"}</div>`;
       const ids = Object.keys(state.players).sort();
+      el.stage.style.minHeight = ids.length >= 7 ? "860px" : ids.length >= 5 ? "780px" : "720px";
       const alive = ids.filter((pid) => Number(state.players[pid].lives || 0) > 0).length;
       const thinking = ids.filter((pid) => state.players[pid].thinking).join(",") || "-";
       el.hudBottomLeft.innerHTML = `<div>alive ${alive}/${ids.length}</div><div>events ${state.cursor}/${state.replayEvents.length}</div>`;
@@ -575,6 +632,7 @@
         seat.className = "seat" + (p.in_hand ? "" : " folded");
         seat.style.left = `${pos[pid].x}px`;
         seat.style.top = `${pos[pid].y}px`;
+        seat.style.width = `${pos[pid].width}px`;
         const winner = state.winners.includes(pid) ? "<span class='badge winner'>winner</span>" : "";
         const think = p.thinking ? "<span class='badge think'>thinking</span>" : "";
         const bubble = p.chatter
@@ -663,6 +721,10 @@
       }
       render();
     });
+    el.fullscreen.addEventListener("click", () => {
+      setTableFocus(!state.tableFocus);
+    });
+    document.addEventListener("fullscreenchange", () => render());
     window.addEventListener("resize", render);
     loadGames();
   </script>
