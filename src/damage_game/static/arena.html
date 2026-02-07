@@ -741,36 +741,55 @@
             const selfSymbol = String(pl.self_symbol || "star");
             const [dominant, emoVal] = dominantEmotion(pl.emotions || {});
             const intensity = Math.max(0.15, Math.min(1.0, Math.abs(Number(emoVal || 0))));
-            const headColor = dominant === "confidence" ? "#c7f0cc" :
+            const avatarColor = dominant === "confidence" ? "#c7f0cc" :
               dominant === "anger" ? "#f0b4a8" :
               dominant === "fear" ? "#d8e5f0" :
               dominant === "tilt" ? "#f3d2a6" : "#e2d8f4";
-            let bodyGeo;
-            if (selfGeometry === "circle") bodyGeo = new THREE.SphereGeometry(0.36, 16, 16);
-            else if (selfGeometry === "triangle") bodyGeo = new THREE.ConeGeometry(0.38, 0.78, 3);
-            else if (selfGeometry === "square") bodyGeo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
-            else if (selfGeometry === "diamond") bodyGeo = new THREE.OctahedronGeometry(0.42);
-            else if (selfGeometry === "octagon") bodyGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.74, 8);
-            else bodyGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.74, 6);
-
-            const body = new THREE.Mesh(
-              bodyGeo,
-              new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.55 })
+            const beam = new THREE.Mesh(
+              new THREE.CylinderGeometry(0.12, 0.12, 1.45, 24),
+              new THREE.MeshStandardMaterial({
+                color: bodyColor,
+                emissive: bodyColor,
+                emissiveIntensity: 0.18 + intensity * 0.22,
+                transparent: true,
+                opacity: 0.78,
+                roughness: 0.2,
+              })
             );
-            body.position.copy(pos);
-            body.position.y = 0.9;
-            body.castShadow = true;
-            group.add(body);
-            if (selfGeometry === "triangle") body.rotation.y = Math.PI / 6;
+            beam.position.copy(pos);
+            beam.position.y = 1.05;
+            group.add(beam);
 
-            const head = new THREE.Mesh(
-              new THREE.SphereGeometry(0.26, 16, 16),
-              new THREE.MeshStandardMaterial({ color: headColor, roughness: 0.42, emissive: headColor, emissiveIntensity: 0.06 + intensity * 0.1 })
+            let avatarGeo;
+            if (selfGeometry === "circle") avatarGeo = new THREE.SphereGeometry(0.34, 20, 20);
+            else if (selfGeometry === "triangle") avatarGeo = new THREE.ConeGeometry(0.36, 0.64, 3);
+            else if (selfGeometry === "square") avatarGeo = new THREE.BoxGeometry(0.56, 0.56, 0.56);
+            else if (selfGeometry === "diamond") avatarGeo = new THREE.OctahedronGeometry(0.34);
+            else if (selfGeometry === "octagon") avatarGeo = new THREE.CylinderGeometry(0.30, 0.30, 0.56, 8);
+            else avatarGeo = new THREE.CylinderGeometry(0.30, 0.30, 0.56, 6);
+
+            const avatar = new THREE.Mesh(
+              avatarGeo,
+              new THREE.MeshStandardMaterial({
+                color: avatarColor,
+                roughness: 0.35,
+                emissive: avatarColor,
+                emissiveIntensity: 0.08 + intensity * 0.15,
+              })
             );
-            head.position.copy(pos);
-            head.position.y = 1.52;
-            head.castShadow = true;
-            group.add(head);
+            avatar.position.copy(pos);
+            avatar.position.y = 1.78;
+            avatar.castShadow = true;
+            group.add(avatar);
+            if (selfGeometry === "triangle") avatar.rotation.y = Math.PI / 6;
+
+            const symbolBadge = new THREE.Sprite(
+              new THREE.SpriteMaterial({ map: buildLabelTexture([selfSymbol.toUpperCase()]) })
+            );
+            symbolBadge.scale.set(0.95, 0.44, 1);
+            symbolBadge.position.copy(pos);
+            symbolBadge.position.y = 2.3;
+            group.add(symbolBadge);
             if (pl.thinking) {
               const ring = new THREE.Mesh(
                 new THREE.TorusGeometry(0.36, 0.035, 10, 28),
@@ -783,7 +802,7 @@
                 })
               );
               ring.position.copy(pos);
-              ring.position.y = 1.52;
+              ring.position.y = 1.78;
               ring.rotation.x = Math.PI / 2;
               ring.userData.pulsePhase = Math.random() * Math.PI * 2;
               group.add(ring);
