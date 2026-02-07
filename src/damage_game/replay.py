@@ -19,6 +19,10 @@ def log_path(log_dir: str, game_id: str) -> Path:
     return Path(log_dir) / f"{game_id}.events.jsonl"
 
 
+def bio_path(log_dir: str, game_id: str, player_id: str) -> Path:
+    return Path(log_dir) / f"{game_id}.bios" / f"{player_id}.md"
+
+
 def list_game_logs(log_dir: str) -> list[GameLogInfo]:
     return list_logs_with_prefix(log_dir, "game_")
 

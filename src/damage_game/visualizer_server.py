@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .replay import list_game_logs, list_tournament_logs, load_events, log_path
+from .replay import bio_path, list_game_logs, list_tournament_logs, load_events, log_path
 
 
 class VisualizerServer:
@@ -51,6 +51,9 @@ class VisualizerServer:
                     return
                 if path == "/api/replay":
                     self._send_replay(log_dir, parse_qs(parsed.query))
+                    return
+                if path == "/api/bio":
+                    self._send_bio(log_dir, parse_qs(parsed.query))
                     return
                 if path == "/api/stream":
                     self._stream(log_dir, parse_qs(parsed.query))
@@ -150,6 +153,33 @@ class VisualizerServer:
                             self.wfile.flush()
                         except (BrokenPipeError, ConnectionResetError):
                             return
+
+            def _send_bio(self, run_dir: str, qs: dict[str, list[str]]) -> None:
+                game_id = _single(qs, "game_id")
+                player_id = _single(qs, "player_id")
+                if not game_id or not player_id:
+                    self._send_json({"error": "missing game_id or player_id"}, status=HTTPStatus.BAD_REQUEST)
+                    return
+                path = bio_path(run_dir, game_id, player_id)
+                if not path.exists():
+                    self._send_json(
+                        {"error": f"bio not found for {player_id} in {game_id}"},
+                        status=HTTPStatus.NOT_FOUND,
+                    )
+                    return
+                try:
+                    markdown = path.read_text(encoding="utf-8")
+                except Exception as exc:
+                    self._send_json({"error": f"failed to read bio: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                    return
+                self._send_json(
+                    {
+                        "game_id": game_id,
+                        "player_id": player_id,
+                        "markdown": markdown,
+                        "path": str(path.name),
+                    }
+                )
 
             def _send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
                 body = json.dumps(payload, ensure_ascii=True).encode("utf-8")

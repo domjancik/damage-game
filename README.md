@@ -74,6 +74,11 @@ uv run --python 3.11 -m damage_game.cli --players 4 --player-models "P1=mistral-
 
 Players now choose unique aliases at game start (and on seat refill joins), with duplicate prevention.
 
+Agents now also generate backstories (Culture-style tone) at game start:
+- Stored as separate markdown files in `runs/<game_id>.bios/<player_id>.md`
+- Summary is injected into affect/chatter/action prompts to condition behavior
+- Visualizers can load full bios through `/api/bio?game_id=...&player_id=...`
+
 Life risk rule:
 - `fold` avoids life loss for that hand (chips committed stay in pot).
 - Players who stay to showdown and lose lose 1 Life.

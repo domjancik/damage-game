@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from itertools import combinations
+from pathlib import Path
 
 from .event_log import EventLogger
 from .model_router import ModelRouter, ModelRoutingPolicy
@@ -24,6 +25,22 @@ AVATAR_IDS = [
     "iron_reader",
     "quiet_storm",
     "vector_hawk",
+]
+BACKSTORY_TRAITS = [
+    "former game-theory drone liaison",
+    "ex-diplomatic fixer from orbital salons",
+    "disgraced strategic tutor seeking composure",
+    "quiet probability mystic from deep habitat rings",
+    "retired conflict mediator with a predatory read",
+    "systems ethicist who treats bluffing as rhetoric",
+]
+BACKSTORY_MOTIVES = [
+    "to map minds rather than cards",
+    "to rebuild status without visible force",
+    "to test if empathy can outplay fear",
+    "to settle an old social debt",
+    "to prove precision beats spectacle",
+    "to collect leverage for future alliances",
 ]
 
 
@@ -90,6 +107,8 @@ class DamageSimulator:
             player_ids = [f"P{i + 1}" for i in range(cfg.players)]
         self.seat_target = len(player_ids)
         self.join_counter = 0
+        self.backstory_dir = Path(cfg.log_dir) / f"{self.game_id}.bios"
+        self.backstory_dir.mkdir(parents=True, exist_ok=True)
         self.players = [
             PlayerState(
                 player_id=player_id,
@@ -143,6 +162,7 @@ class DamageSimulator:
             },
         )
         self._select_player_avatars()
+        self._generate_player_backstories(turn=0)
 
         turn = 1
         while turn <= self.cfg.turns:
@@ -223,6 +243,7 @@ class DamageSimulator:
             skill_affect=self.rng.randint(45, 80),
         )
         player.avatar_id, player.alias = self._ask_player_for_identity(player, turn=turn)
+        self._generate_backstory_for_player(player, turn=turn)
         self.event_logger.write(
             "avatar_selected",
             {
@@ -234,6 +255,167 @@ class DamageSimulator:
             },
         )
         return player
+
+    def _generate_player_backstories(self, turn: int) -> None:
+        for actor in self.players:
+            if not self._is_player_active(actor):
+                continue
+            self._generate_backstory_for_player(actor, turn=turn)
+
+    def _generate_backstory_for_player(self, actor: PlayerState, turn: int) -> None:
+        if actor.backstory_summary.strip():
+            return
+        model = self._select_model_for_player(actor)
+        lookup = self._lookup_backstory_signatures(limit=16)
+        fallback = self._fallback_backstory(actor, lookup)
+        self.event_logger.write(
+            "thinking",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "status": "start",
+                "model": model,
+                "stage": "backstory",
+            },
+        )
+        try:
+            response = self.client.chat_json(
+                system_prompt=(
+                    "Write concise character backstory in the spirit of post-scarcity strategic drama. "
+                    "Do not quote novels. Return JSON only."
+                ),
+                user_prompt=(
+                    "Schema: {summary, markdown, signature}. "
+                    "summary max 180 chars and must influence risk/affect style. "
+                    "markdown format: heading + 3 bullets (history, motive, tells). "
+                    "signature is a short unique style tag to avoid repetition. "
+                    f"State: {json.dumps({'player_id': actor.player_id, 'alias': actor.alias, 'avatar_id': actor.avatar_id, 'will': actor.will, 'skill_affect': actor.skill_affect, 'lookup_signatures': lookup})}"
+                ),
+                max_tokens=260,
+                model=model,
+            )
+            self.token_monitor.record(actor.player_id, response.model, response.usage)
+            parsed = self._parse_json(response.content)
+            summary = str(parsed.get("summary", "")).strip()
+            markdown = str(parsed.get("markdown", "")).strip()
+            signature = str(parsed.get("signature", "")).strip()
+            if not summary:
+                summary = fallback["summary"]
+            if not markdown:
+                markdown = fallback["markdown"]
+            if not signature:
+                signature = fallback["signature"]
+            self.event_logger.write(
+                "thinking",
+                {
+                    "turn": turn,
+                    "player_id": actor.player_id,
+                    "status": "end",
+                    "stage": "backstory",
+                    "outcome": "created",
+                    "summary": summary[:180],
+                },
+            )
+        except Exception:
+            summary = fallback["summary"]
+            markdown = fallback["markdown"]
+            signature = fallback["signature"]
+            self.event_logger.write(
+                "thinking",
+                {
+                    "turn": turn,
+                    "player_id": actor.player_id,
+                    "status": "end",
+                    "stage": "backstory",
+                    "outcome": "provider_failure",
+                    "summary": summary[:180],
+                },
+            )
+
+        actor.backstory_summary = self._normalize_summary(summary)
+        actor.backstory_file = f"{actor.player_id}.md"
+        body = self._normalize_backstory_markdown(actor, markdown, signature)
+        (self.backstory_dir / actor.backstory_file).write_text(body, encoding="utf-8")
+        self.event_logger.write(
+            "backstory_created",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "alias": actor.alias,
+                "summary": actor.backstory_summary,
+                "file": str((self.backstory_dir / actor.backstory_file).name),
+                "signature": signature[:80],
+            },
+        )
+
+    def _lookup_backstory_signatures(self, limit: int = 16) -> list[str]:
+        out: list[str] = []
+        root = Path(self.cfg.log_dir)
+        if not root.exists():
+            return out
+        paths = sorted(root.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for path in paths:
+            if len(out) >= limit:
+                break
+            if ".bios" not in str(path):
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            for line in text.splitlines():
+                if line.lower().startswith("- signature:"):
+                    sig = line.split(":", 1)[1].strip()
+                    if sig and sig.lower() not in {x.lower() for x in out}:
+                        out.append(sig[:80])
+                    break
+        return out
+
+    def _fallback_backstory(self, actor: PlayerState, lookup: list[str]) -> dict[str, str]:
+        traits = [x for x in BACKSTORY_TRAITS if all(x.lower() not in s.lower() for s in lookup)]
+        motives = [x for x in BACKSTORY_MOTIVES if all(x.lower() not in s.lower() for s in lookup)]
+        trait = self.rng.choice(traits or BACKSTORY_TRAITS)
+        motive = self.rng.choice(motives or BACKSTORY_MOTIVES)
+        summary = (
+            f"{actor.alias or actor.player_id} is a {trait}; plays controlled pressure lines {motive}."
+        )
+        signature = f"{trait} | {motive}"
+        markdown = (
+            f"# {actor.alias or actor.player_id}\n"
+            f"- History: A {trait} known for layered table reads.\n"
+            f"- Motive: Enters Damage {motive}.\n"
+            "- Tells: Speaks calmly, escalates when opponents show emotional drift.\n"
+        )
+        return {"summary": summary, "markdown": markdown, "signature": signature}
+
+    @staticmethod
+    def _normalize_summary(text: str) -> str:
+        s = " ".join((text or "").split()).strip()
+        if len(s) > 180:
+            s = s[:177].rstrip() + "..."
+        return s
+
+    def _normalize_backstory_markdown(self, actor: PlayerState, markdown: str, signature: str) -> str:
+        lines = [x.rstrip() for x in markdown.splitlines() if x.strip()]
+        title = f"# {actor.alias or actor.player_id}"
+        bullets = [x for x in lines if x.lstrip().startswith("- ")]
+        if not bullets:
+            fallback = self._fallback_backstory(actor, [])
+            lines = fallback["markdown"].splitlines()
+            bullets = [x for x in lines if x.lstrip().startswith("- ")]
+        core = [title]
+        core.extend(bullets[:3])
+        core.append(f"- Summary: {actor.backstory_summary}")
+        core.append(f"- Signature: {signature[:80] or 'default-profile'}")
+        core.append("")
+        return "\n".join(core)
+
+    @staticmethod
+    def _behavior_anchor(actor: PlayerState) -> str:
+        summary = (actor.backstory_summary or "").strip()
+        if summary:
+            return summary
+        return f"{actor.alias or actor.player_id} plays a disciplined adaptive style under pressure."
 
     def _run_hand(self, turn: int) -> None:
         participants = self._active_players()
@@ -556,6 +738,8 @@ class DamageSimulator:
             "pot": self.pot,
             "self": {
                 "player_id": actor.player_id,
+                "alias": actor.alias,
+                "backstory_summary": self._behavior_anchor(actor),
                 "will": actor.will,
                 "skill_affect": actor.skill_affect,
                 "focus": actor.focus,
@@ -710,6 +894,8 @@ class DamageSimulator:
             "pot": self.pot,
             "self": {
                 "player_id": actor.player_id,
+                "alias": actor.alias,
+                "backstory_summary": self._behavior_anchor(actor),
                 "emotions": self._emotion_dict(actor.emotions),
                 "will": actor.will,
                 "skill_affect": actor.skill_affect,
@@ -778,6 +964,7 @@ class DamageSimulator:
             "target_id": target.player_id,
             "message": message[:180],
             "intended_emotion": intended_emotion,
+            "target_backstory_summary": self._behavior_anchor(target),
             "target_emotions": self._emotion_dict(target.emotions),
             "target_stress": target.stress,
         }
@@ -1058,6 +1245,8 @@ class DamageSimulator:
             ],
             "self": {
                 "player_id": actor.player_id,
+                "alias": actor.alias,
+                "backstory_summary": self._behavior_anchor(actor),
                 "hand": actor.hand,
                 "card_style": self.card_style,
                 "community_cards": list(self.community_cards),
@@ -1700,6 +1889,8 @@ class DamageSimulator:
             "player_id": player.player_id,
             "alias": player.alias,
             "avatar_id": player.avatar_id,
+            "backstory_summary": player.backstory_summary,
+            "backstory_file": player.backstory_file,
             "lives": player.lives,
             "bankroll": player.bankroll,
             "current_bet": player.current_bet,

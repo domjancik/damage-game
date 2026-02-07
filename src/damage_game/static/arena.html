@@ -75,7 +75,7 @@
       grid-template-columns: 1fr auto;
     }
     .list {
-      height: 700px;
+      height: 520px;
       overflow: auto;
       font-family: "IBM Plex Mono", "Consolas", monospace;
       font-size: 12px;
@@ -83,6 +83,25 @@
       border-radius: 8px;
       padding: 8px;
       background: #fffdf8;
+    }
+    .bio-controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .bio {
+      margin-top: 8px;
+      height: 170px;
+      overflow: auto;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      border: 1px solid #e7dac7;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fffef9;
+      white-space: pre-wrap;
+      line-height: 1.35;
     }
     .row {
       border-bottom: 1px solid #f1e5d8;
@@ -126,7 +145,9 @@
       .replaybar { grid-template-columns: 1fr 1fr; }
       .grid { grid-template-columns: 1fr; }
       .panel { min-height: 520px; }
-      #stage, .list { height: 500px; }
+      #stage { height: 500px; }
+      .list { height: 340px; }
+      .bio { height: 150px; }
     }
   </style>
   <script>
@@ -189,6 +210,11 @@
       </div>
       <div class="panel">
         <div class="list" id="tables"></div>
+        <div class="bio-controls">
+          <select id="bioPlayer"></select>
+          <button id="loadBio">Load Bio</button>
+        </div>
+        <div class="bio" id="bio">No bio loaded.</div>
       </div>
     </div>
   </div>
@@ -244,7 +270,10 @@
       cursorLabel: document.getElementById("cursorLabel"),
       cursor: document.getElementById("cursor"),
       speed: document.getElementById("speed"),
-      speedLabel: document.getElementById("speedLabel")
+      speedLabel: document.getElementById("speedLabel"),
+      bioPlayer: document.getElementById("bioPlayer"),
+      loadBio: document.getElementById("loadBio"),
+      bio: document.getElementById("bio")
     };
     function setLogHidden(hidden) {
       state.logHidden = Boolean(hidden);
@@ -347,6 +376,8 @@
               chatter: (table.players[pl.player_id] || {}).chatter || "",
               reaction: (table.players[pl.player_id] || {}).reaction || "",
               avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
+              backstory_summary: pl.backstory_summary || (table.players[pl.player_id] || {}).backstory_summary || "",
+              backstory_file: pl.backstory_file || (table.players[pl.player_id] || {}).backstory_file || "",
             };
           }
         }
@@ -359,6 +390,8 @@
             chatter: (table.players[p.player_id] || {}).chatter || "",
             reaction: (table.players[p.player_id] || {}).reaction || "",
             avatar_id: p.player_state.avatar_id || (table.players[p.player_id] || {}).avatar_id || "pilot_ace",
+            backstory_summary: p.player_state.backstory_summary || (table.players[p.player_id] || {}).backstory_summary || "",
+            backstory_file: p.player_state.backstory_file || (table.players[p.player_id] || {}).backstory_file || "",
           };
         }
         if (evt.type === "action_resolved" && p.player_state && p.player_id) {
@@ -379,6 +412,13 @@
             ...(table.players[p.player_id] || { player_id: p.player_id }),
             avatar_id: String(p.avatar_id || "pilot_ace"),
             alias: String(p.alias || (table.players[p.player_id] || {}).alias || ""),
+          };
+        }
+        if (evt.type === "backstory_created" && p.player_id) {
+          table.players[p.player_id] = {
+            ...(table.players[p.player_id] || { player_id: p.player_id }),
+            backstory_summary: String(p.summary || (table.players[p.player_id] || {}).backstory_summary || ""),
+            backstory_file: String(p.file || (table.players[p.player_id] || {}).backstory_file || ""),
           };
         }
         if (evt.type === "thinking" && p.player_id) {
@@ -437,6 +477,8 @@
               chatter: (table.players[pl.player_id] || {}).chatter || "",
               reaction: (table.players[pl.player_id] || {}).reaction || "",
               avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
+              backstory_summary: pl.backstory_summary || (table.players[pl.player_id] || {}).backstory_summary || "",
+              backstory_file: pl.backstory_file || (table.players[pl.player_id] || {}).backstory_file || "",
             };
           }
         }
@@ -447,6 +489,8 @@
               ...(table.players[pl.player_id] || {}),
               ...pl,
               avatar_id: pl.avatar_id || (table.players[pl.player_id] || {}).avatar_id || "pilot_ace",
+              backstory_summary: pl.backstory_summary || (table.players[pl.player_id] || {}).backstory_summary || "",
+              backstory_file: pl.backstory_file || (table.players[pl.player_id] || {}).backstory_file || "",
             };
           }
         }
@@ -819,17 +863,56 @@
         .sort((a, b) => Number(b.stakeValue || 0) - Number(a.stakeValue || 0))
         .map((t) => {
           const pids = Object.keys(t.players).sort();
+          const labeled = pids.map((pid) => {
+            const p = t.players[pid] || {};
+            return p.alias ? `${p.alias}(${pid})` : pid;
+          });
           const chips = `<span class="chips">stake ${Math.round(t.stakeValue)}</span>`;
           return `<div class="row">
             <div><strong>${t.gameId}</strong>${chips}</div>
             <div>status=${t.status} turn=${t.turn} phase=${t.phase}</div>
             <div>pot=${t.pot} ante=${t.ante} high_bet=${t.highBet} seats=${t.seatCount}</div>
-            <div>players=${pids.join(",") || "-"}</div>
+            <div>players=${labeled.join(",") || "-"}</div>
             <div>winners=${(t.winners || []).join(",") || "-"}</div>
           </div>`;
         })
         .join("");
       el.tables.innerHTML = rows || "<div>No games found.</div>";
+      refreshBioPlayers();
+    }
+
+    function currentBioGameId() {
+      if (state.focusTable !== "__all__") return state.focusTable;
+      if (state.mode === "replay" && state.replayGameId) return state.replayGameId;
+      const first = state.tables[0];
+      return first ? first.gameId : "";
+    }
+
+    function refreshBioPlayers() {
+      const gid = currentBioGameId();
+      const table = state.tables.find((t) => t.gameId === gid);
+      const ids = table ? Object.keys(table.players || {}).sort() : [];
+      el.bioPlayer.innerHTML = ids.map((pid) => {
+        const p = table.players[pid] || {};
+        const name = p.alias ? `${p.alias} (${pid})` : pid;
+        return `<option value="${pid}">${name}</option>`;
+      }).join("");
+    }
+
+    async function loadBio() {
+      const gid = currentBioGameId();
+      const pid = el.bioPlayer.value;
+      if (!gid || !pid) {
+        el.bio.textContent = "No bio loaded.";
+        return;
+      }
+      const r = await fetch(`/api/bio?game_id=${encodeURIComponent(gid)}&player_id=${encodeURIComponent(pid)}`);
+      if (!r.ok) {
+        el.bio.textContent = `Bio unavailable for ${pid}`;
+        return;
+      }
+      const data = await r.json();
+      el.bio.textContent = data.markdown || "Bio unavailable.";
     }
 
     function rebuildFocusOptions() {
@@ -942,6 +1025,7 @@
     el.auto.addEventListener("click", () => setAuto(!state.auto));
     el.focus.addEventListener("change", () => {
       state.focusTable = el.focus.value;
+      refreshBioPlayers();
       render3D();
     });
     el.prev.addEventListener("click", () => {
@@ -978,6 +1062,7 @@
       }
       updateReplayHud();
     });
+    el.loadBio.addEventListener("click", loadBio);
     el.liveOnly.addEventListener("change", () => {
       state.liveOnly = Boolean(el.liveOnly.checked);
       render3D();

@@ -141,6 +141,8 @@ class PlayerState:
     player_id: str
     alias: str = ""
     avatar_id: str = ""
+    backstory_summary: str = ""
+    backstory_file: str = ""
     lives: int = 3
     bankroll: int = 200
     current_bet: int = 0

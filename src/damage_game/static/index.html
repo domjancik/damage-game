@@ -158,6 +158,25 @@
       white-space: pre-wrap;
       font-family: "IBM Plex Mono", "Consolas", monospace;
     }
+    .bio-controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .bio {
+      margin-top: 8px;
+      max-height: 280px;
+      overflow: auto;
+      border: 1px solid #e7dac7;
+      border-radius: 8px;
+      padding: 8px;
+      background: #fffef9;
+      white-space: pre-wrap;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.35;
+    }
     .timeline {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -205,6 +224,12 @@
       <div class="panel">
         <h3>Token Monitor</h3>
         <div id="tokens" class="token">No data yet.</div>
+        <h3 style="margin-top:12px;">Player Bio</h3>
+        <div class="bio-controls">
+          <select id="bioPlayer"></select>
+          <button id="loadBio">Load Bio</button>
+        </div>
+        <div id="bio" class="bio">No bio loaded.</div>
       </div>
       <div class="panel" id="eventPanel">
         <h3>Event Feed</h3>
@@ -238,6 +263,9 @@
       gameLabel: document.getElementById("gameLabel"),
       table: document.getElementById("table"),
       players: document.getElementById("players"),
+      bioPlayer: document.getElementById("bioPlayer"),
+      loadBio: document.getElementById("loadBio"),
+      bio: document.getElementById("bio"),
       tokens: document.getElementById("tokens"),
       events: document.getElementById("events"),
       cursor: document.getElementById("cursor"),
@@ -254,6 +282,8 @@
       if (!state.players[id]) {
         state.players[id] = {
           alias: "",
+          backstory_summary: "",
+          backstory_file: "",
           lives: 3,
           bankroll: 200,
           current_bet: 0,
@@ -280,6 +310,8 @@
       const x = initPlayer(p.player_id);
       x.lives = Number(p.lives ?? x.lives);
       x.alias = String(p.alias ?? x.alias ?? "");
+      x.backstory_summary = String(p.backstory_summary ?? x.backstory_summary ?? "");
+      x.backstory_file = String(p.backstory_file ?? x.backstory_file ?? "");
       x.bankroll = Number(p.bankroll ?? x.bankroll);
       x.current_bet = Number(p.current_bet ?? x.current_bet);
       x.in_hand = Boolean(p.in_hand ?? x.in_hand);
@@ -315,6 +347,11 @@
       if (t === "avatar_selected" && p.player_id) {
         const pl = initPlayer(p.player_id);
         if (typeof p.alias === "string") pl.alias = p.alias;
+      }
+      if (t === "backstory_created" && p.player_id) {
+        const pl = initPlayer(p.player_id);
+        if (typeof p.summary === "string") pl.backstory_summary = p.summary;
+        if (typeof p.file === "string") pl.backstory_file = p.file;
       }
       if (t === "hand_started") {
         (p.players || []).forEach(applyPlayerSnapshot);
@@ -406,6 +443,7 @@
           <div class="player">
             <div><strong>${name}</strong>${winnerBadge}${thinkingBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="cards">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)} resist=${p.resistance_bonus.toFixed(1)}</div>
+            <div class="cards">bio: ${p.backstory_summary || "-"}</div>
             <div class="cards">thought: ${p.thought || "-"}</div>
             <div class="cards">chatter: ${p.chatter || "-"}</div>
             <div class="cards">reaction: ${p.reaction || "-"}</div>
@@ -448,6 +486,30 @@
       el.events.scrollTop = el.events.scrollHeight;
     }
 
+    function refreshBioPlayers() {
+      const ids = Object.keys(state.players).sort();
+      el.bioPlayer.innerHTML = ids.map((pid) => {
+        const p = state.players[pid] || {};
+        const name = p.alias ? `${p.alias} (${pid})` : pid;
+        return `<option value="${pid}">${name}</option>`;
+      }).join("");
+    }
+
+    async function loadBio() {
+      const pid = el.bioPlayer.value;
+      if (!state.gameId || !pid) {
+        el.bio.textContent = "No bio loaded.";
+        return;
+      }
+      const r = await fetch(`/api/bio?game_id=${encodeURIComponent(state.gameId)}&player_id=${encodeURIComponent(pid)}`);
+      if (!r.ok) {
+        el.bio.textContent = `Bio unavailable for ${pid}`;
+        return;
+      }
+      const data = await r.json();
+      el.bio.textContent = data.markdown || "Bio unavailable.";
+    }
+
     function refreshView() {
       el.gameLabel.textContent = state.gameId || "none";
       const total = state.replayEvents.length;
@@ -458,6 +520,7 @@
       renderTable();
       renderPlayers();
       renderEvents();
+      refreshBioPlayers();
     }
 
     function resetDerivedState() {
@@ -542,6 +605,7 @@
     el.refresh.addEventListener("click", loadGames);
     el.replay.addEventListener("click", loadReplay);
     el.live.addEventListener("click", startLive);
+    el.loadBio.addEventListener("click", loadBio);
     el.prev.addEventListener("click", () => { stopPlayback(); seekReplay(state.cursor - 1); });
     el.next.addEventListener("click", () => { stopPlayback(); seekReplay(state.cursor + 1); });
     el.play.addEventListener("click", () => {
