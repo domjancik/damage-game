@@ -16,6 +16,13 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run config-driven smoke tests")
     parser.add_argument("--config", required=True, help="Path to smoke JSON config")
     parser.add_argument("--mode", choices=["sim", "tournament", "probe"], default="", help="Optional override mode")
+    parser.add_argument(
+        "--set",
+        dest="overrides",
+        action="append",
+        default=[],
+        help="Override one config field: key=value (repeatable). Supports JSON literals and dot paths.",
+    )
     return parser
 
 
@@ -60,10 +67,60 @@ def _normalize_common(cfg: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _parse_override_value(raw: str) -> Any:
+    text = raw.strip()
+    if not text:
+        return ""
+    try:
+        return json.loads(text)
+    except Exception:
+        low = text.lower()
+        if low in {"true", "false"}:
+            return low == "true"
+        if low in {"null", "none"}:
+            return None
+        try:
+            return int(text)
+        except Exception:
+            pass
+        try:
+            return float(text)
+        except Exception:
+            return text
+
+
+def _set_nested(cfg: dict[str, Any], dotted_key: str, value: Any) -> None:
+    parts = [p.strip() for p in dotted_key.split(".") if p.strip()]
+    if not parts:
+        return
+    cur = cfg
+    for part in parts[:-1]:
+        nxt = cur.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[part] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
+
+
+def _apply_overrides(cfg: dict[str, Any], overrides: list[str]) -> dict[str, Any]:
+    out = dict(cfg)
+    for item in overrides:
+        text = str(item or "").strip()
+        if not text or "=" not in text:
+            continue
+        key, raw_val = text.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        _set_nested(out, key, _parse_override_value(raw_val))
+    return out
+
+
 def main() -> None:
     args = _parser().parse_args()
     raw = _load_json(Path(args.config))
-    cfg = _normalize_common(_merge_profile(raw))
+    cfg = _normalize_common(_apply_overrides(_merge_profile(raw), list(args.overrides or [])))
     mode = (args.mode or str(cfg.get("mode", "sim"))).strip().lower()
 
     if mode == "probe":

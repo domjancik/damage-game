@@ -52,6 +52,11 @@ uv run --python 3.11 -m damage_game.smoke_cli --config configs/smoke.sim.local.j
 ```
 
 Set `"mode"` in config to `"sim"`, `"tournament"`, or `"probe"`.
+You can override individual fields without editing the file:
+
+```powershell
+uv run --python 3.11 -m damage_game.smoke_cli --config configs/smoke.sim.local.json --set players=6 --set turns=2 --set ongoing_table=true --set model=\"qwen2.5-coder-7b\"
+```
 
 Rule toggles for experiments:
 
