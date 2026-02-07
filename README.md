@@ -73,6 +73,7 @@ uv run --python 3.11 -m damage_game.cli --players 4 --player-models "P1=mistral-
 ```
 
 Players now choose unique aliases at game start (and on seat refill joins), with duplicate prevention.
+Agents also pick self-representation motifs (`self_geometry` + `self_symbol`) used in visualizers.
 
 Agents now also generate backstories (Culture-style tone) at game start:
 - Stored as separate markdown files in `runs/<game_id>.bios/<player_id>.md`

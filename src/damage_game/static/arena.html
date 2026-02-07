@@ -412,6 +412,8 @@
             ...(table.players[p.player_id] || { player_id: p.player_id }),
             avatar_id: String(p.avatar_id || "pilot_ace"),
             alias: String(p.alias || (table.players[p.player_id] || {}).alias || ""),
+            self_geometry: String(p.self_geometry || (table.players[p.player_id] || {}).self_geometry || "hexagon"),
+            self_symbol: String(p.self_symbol || (table.players[p.player_id] || {}).self_symbol || "star"),
           };
         }
         if (evt.type === "backstory_created" && p.player_id) {
@@ -735,21 +737,31 @@
             const pl = t.players[pid] || {};
             const avatarId = String(pl.avatar_id || "pilot_ace");
             const bodyColor = AVATAR_COLORS[avatarId] || AVATAR_COLORS.default;
+            const selfGeometry = String(pl.self_geometry || "hexagon");
+            const selfSymbol = String(pl.self_symbol || "star");
             const [dominant, emoVal] = dominantEmotion(pl.emotions || {});
             const intensity = Math.max(0.15, Math.min(1.0, Math.abs(Number(emoVal || 0))));
             const headColor = dominant === "confidence" ? "#c7f0cc" :
               dominant === "anger" ? "#f0b4a8" :
               dominant === "fear" ? "#d8e5f0" :
               dominant === "tilt" ? "#f3d2a6" : "#e2d8f4";
+            let bodyGeo;
+            if (selfGeometry === "circle") bodyGeo = new THREE.SphereGeometry(0.36, 16, 16);
+            else if (selfGeometry === "triangle") bodyGeo = new THREE.ConeGeometry(0.38, 0.78, 3);
+            else if (selfGeometry === "square") bodyGeo = new THREE.BoxGeometry(0.62, 0.62, 0.62);
+            else if (selfGeometry === "diamond") bodyGeo = new THREE.OctahedronGeometry(0.42);
+            else if (selfGeometry === "octagon") bodyGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.74, 8);
+            else bodyGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.74, 6);
 
             const body = new THREE.Mesh(
-              new THREE.CapsuleGeometry(0.28, 0.6, 4, 8),
+              bodyGeo,
               new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.55 })
             );
             body.position.copy(pos);
             body.position.y = 0.9;
             body.castShadow = true;
             group.add(body);
+            if (selfGeometry === "triangle") body.rotation.y = Math.PI / 6;
 
             const head = new THREE.Mesh(
               new THREE.SphereGeometry(0.26, 16, 16),
@@ -781,6 +793,7 @@
             const label = new THREE.Sprite(
               new THREE.SpriteMaterial({ map: buildLabelTexture([
                 `${pl.alias ? `${pl.alias}(${pid})` : pid} ${avatarId}`,
+                `motif=${selfGeometry}/${selfSymbol}`,
                 `l=${pl.lives ?? 0} b=${pl.bankroll ?? 0}`,
                 `bet=${pl.current_bet ?? 0} in=${pl.in_hand ? "Y" : "N"}`,
                 `${dominant}=${Number(emoVal || 0).toFixed(2)}`,
@@ -865,7 +878,9 @@
           const pids = Object.keys(t.players).sort();
           const labeled = pids.map((pid) => {
             const p = t.players[pid] || {};
-            return p.alias ? `${p.alias}(${pid})` : pid;
+            const motif = `${String(p.self_geometry || "hexagon")[0]}:${String(p.self_symbol || "star")[0]}`;
+            const base = p.alias ? `${p.alias}(${pid})` : pid;
+            return `${base}[${motif}]`;
           });
           const chips = `<span class="chips">stake ${Math.round(t.stakeValue)}</span>`;
           return `<div class="row">

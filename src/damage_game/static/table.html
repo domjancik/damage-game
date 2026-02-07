@@ -462,6 +462,8 @@
       if (!state.players[id]) {
         state.players[id] = {
           alias: "",
+          self_geometry: "hexagon",
+          self_symbol: "star",
           backstory_summary: "",
           backstory_file: "",
           lives: 3, bankroll: 200, current_bet: 0, in_hand: true, hand: [],
@@ -476,6 +478,8 @@
       const x = initPlayer(p.player_id);
       x.lives = Number(p.lives ?? x.lives);
       x.alias = String(p.alias ?? x.alias ?? "");
+      x.self_geometry = String(p.self_geometry ?? x.self_geometry ?? "hexagon");
+      x.self_symbol = String(p.self_symbol ?? x.self_symbol ?? "star");
       x.backstory_summary = String(p.backstory_summary ?? x.backstory_summary ?? "");
       x.backstory_file = String(p.backstory_file ?? x.backstory_file ?? "");
       x.bankroll = Number(p.bankroll ?? x.bankroll);
@@ -508,6 +512,8 @@
       if (t === "avatar_selected" && p.player_id) {
         const pl = initPlayer(p.player_id);
         if (typeof p.alias === "string") pl.alias = p.alias;
+        if (typeof p.self_geometry === "string") pl.self_geometry = p.self_geometry;
+        if (typeof p.self_symbol === "string") pl.self_symbol = p.self_symbol;
       }
       if (t === "backstory_created" && p.player_id) {
         const pl = initPlayer(p.player_id);
@@ -657,6 +663,45 @@
       if (tilt > 0.35) { c.fillStyle = "#e35946"; c.fillRect(36, 12, 3, 3); }
       if (p.resistance_bonus > 8) { c.fillStyle = "#ffd97d"; c.fillRect(8, 26, 4, 4); }
       if (p.tempo > 1) { c.fillStyle = "#a6f4da"; c.fillRect(36, 26, 4, 4); }
+      c.strokeStyle = "#dff7ef";
+      c.lineWidth = 1;
+      const g = String(p.self_geometry || "hexagon");
+      if (g === "circle") {
+        c.beginPath(); c.arc(24, 24, 18, 0, Math.PI * 2); c.stroke();
+      } else if (g === "triangle") {
+        c.beginPath(); c.moveTo(24, 6); c.lineTo(40, 36); c.lineTo(8, 36); c.closePath(); c.stroke();
+      } else if (g === "square") {
+        c.strokeRect(8, 8, 32, 32);
+      } else if (g === "diamond") {
+        c.beginPath(); c.moveTo(24, 6); c.lineTo(41, 24); c.lineTo(24, 41); c.lineTo(7, 24); c.closePath(); c.stroke();
+      } else if (g === "octagon") {
+        c.beginPath();
+        c.moveTo(14, 6); c.lineTo(34, 6); c.lineTo(42, 14); c.lineTo(42, 34);
+        c.lineTo(34, 42); c.lineTo(14, 42); c.lineTo(6, 34); c.lineTo(6, 14); c.closePath(); c.stroke();
+      } else {
+        c.beginPath();
+        c.moveTo(24, 5); c.lineTo(38, 13); c.lineTo(38, 29);
+        c.lineTo(24, 43); c.lineTo(10, 29); c.lineTo(10, 13); c.closePath(); c.stroke();
+      }
+      c.fillStyle = "#fbe39d";
+      const s = String(p.self_symbol || "star");
+      if (s === "cross") {
+        c.fillRect(22, 19, 4, 10); c.fillRect(19, 22, 10, 4);
+      } else if (s === "node") {
+        c.fillRect(22, 22, 4, 4);
+      } else if (s === "wave") {
+        c.fillRect(17, 20, 3, 3); c.fillRect(22, 24, 3, 3); c.fillRect(27, 20, 3, 3);
+      } else if (s === "eye") {
+        c.fillRect(18, 22, 12, 3); c.fillRect(23, 21, 2, 5);
+      } else if (s === "orbit") {
+        c.strokeStyle = "#fbe39d"; c.beginPath(); c.arc(24, 24, 7, 0, Math.PI * 2); c.stroke(); c.fillRect(30, 22, 3, 3);
+      } else if (s === "sun") {
+        c.fillRect(22, 22, 4, 4); c.fillRect(22, 16, 2, 4); c.fillRect(22, 28, 2, 4); c.fillRect(16, 22, 4, 2); c.fillRect(28, 22, 4, 2);
+      } else if (s === "spiral") {
+        c.fillRect(20, 20, 8, 2); c.fillRect(26, 20, 2, 8); c.fillRect(18, 26, 8, 2); c.fillRect(18, 22, 2, 4);
+      } else {
+        c.fillRect(23, 18, 2, 12); c.fillRect(18, 23, 12, 2); c.fillRect(20, 20, 8, 8);
+      }
     }
     function parseCardCode(code) {
       const text = String(code || "").trim().toUpperCase();
@@ -759,6 +804,7 @@
           <div class="head"><strong>${name}</strong><span>${winner}${think}</span></div>
             <div class="meta">life=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="meta">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)}</div>
+            <div class="meta">motif=${p.self_geometry}:${p.self_symbol}</div>
             <div class="meta">bio=${p.backstory_summary || "-"}</div>
             <div class="sprite-row">
               <div class="sprite-wrap"><canvas class="sprite" width="48" height="48"></canvas>${p.thinking ? "<div class='think-ring'></div>" : ""}</div>

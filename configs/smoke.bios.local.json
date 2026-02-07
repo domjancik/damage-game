@@ -1,0 +1,17 @@
+{
+  "mode": "sim",
+  "base_url": "http://192.168.1.103:1234/v1",
+  "model": "qwen2.5-14b-instruct-mlx",
+  "fallback_models": [
+    "mistral-small-3.2-24b-instruct-2506-mlx"
+  ],
+  "players": 1,
+  "turns": 1,
+  "seed": 42,
+  "card_style": "holdem",
+  "enable_lives": false,
+  "enable_discussion_layer": false,
+  "enable_direct_emoter_attacks": false,
+  "model_context_window": 8192,
+  "log_dir": "runs"
+}
