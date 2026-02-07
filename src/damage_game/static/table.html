@@ -464,6 +464,7 @@
           alias: "",
           self_geometry: "hexagon",
           self_symbol: "star",
+          self_symmetry_order: 6,
           backstory_summary: "",
           backstory_file: "",
           lives: 3, bankroll: 200, current_bet: 0, in_hand: true, hand: [],
@@ -480,6 +481,7 @@
       x.alias = String(p.alias ?? x.alias ?? "");
       x.self_geometry = String(p.self_geometry ?? x.self_geometry ?? "hexagon");
       x.self_symbol = String(p.self_symbol ?? x.self_symbol ?? "star");
+      x.self_symmetry_order = Number(p.self_symmetry_order ?? x.self_symmetry_order ?? 6);
       x.backstory_summary = String(p.backstory_summary ?? x.backstory_summary ?? "");
       x.backstory_file = String(p.backstory_file ?? x.backstory_file ?? "");
       x.bankroll = Number(p.bankroll ?? x.bankroll);
@@ -514,6 +516,7 @@
         if (typeof p.alias === "string") pl.alias = p.alias;
         if (typeof p.self_geometry === "string") pl.self_geometry = p.self_geometry;
         if (typeof p.self_symbol === "string") pl.self_symbol = p.self_symbol;
+        if (typeof p.self_symmetry_order === "number") pl.self_symmetry_order = p.self_symmetry_order;
       }
       if (t === "backstory_created" && p.player_id) {
         const pl = initPlayer(p.player_id);
@@ -666,22 +669,36 @@
       c.strokeStyle = "#dff7ef";
       c.lineWidth = 1;
       const g = String(p.self_geometry || "hexagon");
-      if (g === "circle") {
-        c.beginPath(); c.arc(24, 24, 18, 0, Math.PI * 2); c.stroke();
-      } else if (g === "triangle") {
-        c.beginPath(); c.moveTo(24, 6); c.lineTo(40, 36); c.lineTo(8, 36); c.closePath(); c.stroke();
-      } else if (g === "square") {
-        c.strokeRect(8, 8, 32, 32);
-      } else if (g === "diamond") {
-        c.beginPath(); c.moveTo(24, 6); c.lineTo(41, 24); c.lineTo(24, 41); c.lineTo(7, 24); c.closePath(); c.stroke();
-      } else if (g === "octagon") {
-        c.beginPath();
-        c.moveTo(14, 6); c.lineTo(34, 6); c.lineTo(42, 14); c.lineTo(42, 34);
-        c.lineTo(34, 42); c.lineTo(14, 42); c.lineTo(6, 34); c.lineTo(6, 14); c.closePath(); c.stroke();
-      } else {
-        c.beginPath();
-        c.moveTo(24, 5); c.lineTo(38, 13); c.lineTo(38, 29);
-        c.lineTo(24, 43); c.lineTo(10, 29); c.lineTo(10, 13); c.closePath(); c.stroke();
+      const order = Math.max(1, Math.min(12, Number(p.self_symmetry_order || 1)));
+      const repeats = order > 1 ? order : 1;
+      const orbit = repeats > 1 ? 11 : 0;
+      const glyph = (cx, cy, r) => {
+        if (g === "circle") {
+          c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke();
+        } else if (g === "triangle") {
+          c.beginPath(); c.moveTo(cx, cy - r); c.lineTo(cx + r, cy + r); c.lineTo(cx - r, cy + r); c.closePath(); c.stroke();
+        } else if (g === "square") {
+          c.strokeRect(cx - r, cy - r, r * 2, r * 2);
+        } else if (g === "diamond") {
+          c.beginPath(); c.moveTo(cx, cy - r); c.lineTo(cx + r, cy); c.lineTo(cx, cy + r); c.lineTo(cx - r, cy); c.closePath(); c.stroke();
+        } else if (g === "octagon") {
+          const k = Math.max(1, Math.floor(r * 0.55));
+          c.beginPath();
+          c.moveTo(cx - r + k, cy - r); c.lineTo(cx + r - k, cy - r); c.lineTo(cx + r, cy - r + k); c.lineTo(cx + r, cy + r - k);
+          c.lineTo(cx + r - k, cy + r); c.lineTo(cx - r + k, cy + r); c.lineTo(cx - r, cy + r - k); c.lineTo(cx - r, cy - r + k);
+          c.closePath(); c.stroke();
+        } else {
+          c.beginPath();
+          c.moveTo(cx, cy - r); c.lineTo(cx + r, cy - Math.floor(r / 2)); c.lineTo(cx + r, cy + Math.floor(r / 2));
+          c.lineTo(cx, cy + r); c.lineTo(cx - r, cy + Math.floor(r / 2)); c.lineTo(cx - r, cy - Math.floor(r / 2));
+          c.closePath(); c.stroke();
+        }
+      };
+      for (let i = 0; i < repeats; i++) {
+        const a = repeats === 1 ? 0 : (Math.PI * 2 * i) / repeats;
+        const cx = 24 + Math.round(Math.cos(a) * orbit);
+        const cy = 24 + Math.round(Math.sin(a) * orbit);
+        glyph(cx, cy, repeats > 1 ? 4 : 18);
       }
       c.fillStyle = "#fbe39d";
       const s = String(p.self_symbol || "star");
@@ -810,7 +827,7 @@
           <div class="head"><strong>${name}</strong><span>${winner}${think}</span></div>
             <div class="meta">life=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="meta">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)}</div>
-            <div class="meta">motif=${p.self_geometry}:${p.self_symbol}</div>
+            <div class="meta">motif=${p.self_geometry}:${p.self_symbol} x${p.self_symmetry_order || 1}</div>
             <div class="meta">bio=${p.backstory_summary || "-"}</div>
             <div class="meta">${bioLink}</div>
             <div class="sprite-row">

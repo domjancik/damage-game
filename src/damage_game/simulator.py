@@ -28,6 +28,7 @@ AVATAR_IDS = [
 ]
 GEOMETRY_IDS = ["circle", "triangle", "square", "diamond", "hexagon", "octagon"]
 SYMBOL_IDS = ["star", "spiral", "eye", "orbit", "wave", "node", "cross", "sun"]
+SYMMETRY_ORDERS = [1, 2, 3, 4, 5, 6, 8, 10, 12]
 BACKSTORY_TRAITS = [
     "former game-theory drone liaison",
     "ex-diplomatic fixer from orbital salons",
@@ -244,8 +245,8 @@ class DamageSimulator:
             will=self.rng.randint(50, 75),
             skill_affect=self.rng.randint(45, 80),
         )
-        player.avatar_id, player.alias, player.self_geometry, player.self_symbol = self._ask_player_for_identity(
-            player, turn=turn
+        player.avatar_id, player.alias, player.self_geometry, player.self_symbol, player.self_symmetry_order = (
+            self._ask_player_for_identity(player, turn=turn)
         )
         self._generate_backstory_for_player(player, turn=turn)
         self.event_logger.write(
@@ -257,6 +258,7 @@ class DamageSimulator:
                 "alias": player.alias,
                 "self_geometry": player.self_geometry,
                 "self_symbol": player.self_symbol,
+                "self_symmetry_order": player.self_symmetry_order,
                 "join_reason": "seat_refill",
             },
         )
@@ -747,6 +749,7 @@ class DamageSimulator:
                 "alias": actor.alias,
                 "self_geometry": actor.self_geometry,
                 "self_symbol": actor.self_symbol,
+                "self_symmetry_order": actor.self_symmetry_order,
                 "backstory_summary": self._behavior_anchor(actor),
                 "will": actor.will,
                 "skill_affect": actor.skill_affect,
@@ -905,6 +908,7 @@ class DamageSimulator:
                 "alias": actor.alias,
                 "self_geometry": actor.self_geometry,
                 "self_symbol": actor.self_symbol,
+                "self_symmetry_order": actor.self_symmetry_order,
                 "backstory_summary": self._behavior_anchor(actor),
                 "emotions": self._emotion_dict(actor.emotions),
                 "will": actor.will,
@@ -1258,6 +1262,7 @@ class DamageSimulator:
                 "alias": actor.alias,
                 "self_geometry": actor.self_geometry,
                 "self_symbol": actor.self_symbol,
+                "self_symmetry_order": actor.self_symmetry_order,
                 "backstory_summary": self._behavior_anchor(actor),
                 "hand": actor.hand,
                 "card_style": self.card_style,
@@ -1709,8 +1714,8 @@ class DamageSimulator:
         for actor in self.players:
             if not self._is_player_active(actor):
                 continue
-            actor.avatar_id, actor.alias, actor.self_geometry, actor.self_symbol = self._ask_player_for_identity(
-                actor, turn=0
+            actor.avatar_id, actor.alias, actor.self_geometry, actor.self_symbol, actor.self_symmetry_order = (
+                self._ask_player_for_identity(actor, turn=0)
             )
             self.event_logger.write(
                 "avatar_selected",
@@ -1721,14 +1726,18 @@ class DamageSimulator:
                     "alias": actor.alias,
                     "self_geometry": actor.self_geometry,
                     "self_symbol": actor.self_symbol,
+                    "self_symmetry_order": actor.self_symmetry_order,
                 },
             )
 
-    def _ask_player_for_identity(self, actor: PlayerState, turn: int = 0) -> tuple[str, str, str, str]:
+    def _ask_player_for_identity(self, actor: PlayerState, turn: int = 0) -> tuple[str, str, str, str, int]:
         fallback = AVATAR_IDS[(sum(ord(c) for c in actor.player_id) + self.cfg.seed) % len(AVATAR_IDS)]
         fallback_alias = self._make_unique_alias(actor.player_id.lower())
         fallback_geo = GEOMETRY_IDS[(sum(ord(c) for c in actor.player_id) + self.cfg.seed * 3) % len(GEOMETRY_IDS)]
         fallback_symbol = SYMBOL_IDS[(sum(ord(c) for c in actor.player_id) + self.cfg.seed * 5) % len(SYMBOL_IDS)]
+        fallback_symmetry = SYMMETRY_ORDERS[
+            (sum(ord(c) for c in actor.player_id) + self.cfg.seed * 7) % len(SYMMETRY_ORDERS)
+        ]
         model = self._select_model_for_player(actor)
         prompt_state = {
             "player_id": actor.player_id,
@@ -1737,6 +1746,7 @@ class DamageSimulator:
             "available_avatars": AVATAR_IDS,
             "available_geometries": GEOMETRY_IDS,
             "available_symbols": SYMBOL_IDS,
+            "available_symmetry_orders": SYMMETRY_ORDERS,
             "used_aliases": sorted(self._existing_aliases(excluding_player_id=actor.player_id)),
         }
         self.event_logger.write(
@@ -1755,8 +1765,9 @@ class DamageSimulator:
                 user_prompt=(
                     "Pick avatar_id from available_avatars and choose an alias not in used_aliases. "
                     "Also pick self_geometry from available_geometries and self_symbol from available_symbols. "
+                    "Pick self_symmetry_order from available_symmetry_orders; this controls repeated circular symmetry. "
                     "Alias rules: 3-16 chars, letters/numbers/_/-. "
-                    "Schema: {avatar_id, alias, self_geometry, self_symbol, summary}. "
+                    "Schema: {avatar_id, alias, self_geometry, self_symbol, self_symmetry_order, summary}. "
                     f"State: {json.dumps(prompt_state)}"
                 ),
                 max_tokens=140,
@@ -1774,11 +1785,12 @@ class DamageSimulator:
                     "outcome": "provider_failure",
                     "summary": (
                         f"fallback_avatar={fallback} fallback_alias={fallback_alias} "
-                        f"fallback_geo={fallback_geo} fallback_symbol={fallback_symbol}"
+                        f"fallback_geo={fallback_geo} fallback_symbol={fallback_symbol} "
+                        f"fallback_symmetry={fallback_symmetry}"
                     ),
                 },
             )
-            return fallback, fallback_alias, fallback_geo, fallback_symbol
+            return fallback, fallback_alias, fallback_geo, fallback_symbol, fallback_symmetry
 
         parsed = self._parse_json(response.content)
         picked = str(parsed.get("avatar_id", "")).strip()
@@ -1792,6 +1804,12 @@ class DamageSimulator:
             geometry = fallback_geo
         if symbol not in SYMBOL_IDS:
             symbol = fallback_symbol
+        try:
+            symmetry = int(parsed.get("self_symmetry_order", fallback_symmetry))
+        except Exception:
+            symmetry = fallback_symmetry
+        if symmetry not in SYMMETRY_ORDERS:
+            symmetry = min(SYMMETRY_ORDERS, key=lambda x: abs(x - symmetry))
         summary = str(parsed.get("summary", "")).strip()[:180]
         self.event_logger.write(
             "provider_call",
@@ -1818,10 +1836,12 @@ class DamageSimulator:
                 "status": "end",
                 "stage": "avatar",
                 "outcome": "avatar_selected",
-                "summary": summary or f"picked={picked} alias={alias} geo={geometry} symbol={symbol}",
+                "summary": summary or (
+                    f"picked={picked} alias={alias} geo={geometry} symbol={symbol} symmetry={symmetry}"
+                ),
             },
         )
-        return picked, alias, geometry, symbol
+        return picked, alias, geometry, symbol, symmetry
 
     def _existing_aliases(self, excluding_player_id: str = "") -> set[str]:
         out: set[str] = set()
@@ -1921,6 +1941,7 @@ class DamageSimulator:
             "avatar_id": player.avatar_id,
             "self_geometry": player.self_geometry,
             "self_symbol": player.self_symbol,
+            "self_symmetry_order": player.self_symmetry_order,
             "backstory_summary": player.backstory_summary,
             "backstory_file": player.backstory_file,
             "lives": player.lives,

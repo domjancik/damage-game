@@ -414,6 +414,7 @@
             alias: String(p.alias || (table.players[p.player_id] || {}).alias || ""),
             self_geometry: String(p.self_geometry || (table.players[p.player_id] || {}).self_geometry || "hexagon"),
             self_symbol: String(p.self_symbol || (table.players[p.player_id] || {}).self_symbol || "star"),
+            self_symmetry_order: Number(p.self_symmetry_order || (table.players[p.player_id] || {}).self_symmetry_order || 6),
           };
         }
         if (evt.type === "backstory_created" && p.player_id) {
@@ -739,6 +740,7 @@
             const bodyColor = AVATAR_COLORS[avatarId] || AVATAR_COLORS.default;
             const selfGeometry = String(pl.self_geometry || "hexagon");
             const selfSymbol = String(pl.self_symbol || "star");
+            const symmetryOrder = Math.max(1, Math.min(12, Number(pl.self_symmetry_order || 1)));
             const [dominant, emoVal] = dominantEmotion(pl.emotions || {});
             const intensity = Math.max(0.15, Math.min(1.0, Math.abs(Number(emoVal || 0))));
             const avatarColor = dominant === "confidence" ? "#c7f0cc" :
@@ -768,20 +770,28 @@
             else if (selfGeometry === "octagon") avatarGeo = new THREE.CylinderGeometry(0.30, 0.30, 0.56, 8);
             else avatarGeo = new THREE.CylinderGeometry(0.30, 0.30, 0.56, 6);
 
-            const avatar = new THREE.Mesh(
-              avatarGeo,
-              new THREE.MeshStandardMaterial({
-                color: avatarColor,
-                roughness: 0.35,
-                emissive: avatarColor,
-                emissiveIntensity: 0.08 + intensity * 0.15,
-              })
-            );
-            avatar.position.copy(pos);
-            avatar.position.y = 1.78;
-            avatar.castShadow = true;
-            group.add(avatar);
-            if (selfGeometry === "triangle") avatar.rotation.y = Math.PI / 6;
+            const repeats = symmetryOrder > 1 ? symmetryOrder : 1;
+            const orbit = repeats > 1 ? 0.28 : 0.0;
+            for (let i = 0; i < repeats; i++) {
+              const a = repeats === 1 ? 0 : (Math.PI * 2 * i) / repeats;
+              const avatar = new THREE.Mesh(
+                avatarGeo,
+                new THREE.MeshStandardMaterial({
+                  color: avatarColor,
+                  roughness: 0.35,
+                  emissive: avatarColor,
+                  emissiveIntensity: 0.08 + intensity * 0.15,
+                })
+              );
+              avatar.position.copy(pos);
+              avatar.position.x += Math.cos(a) * orbit;
+              avatar.position.z += Math.sin(a) * orbit;
+              avatar.position.y = 1.78;
+              avatar.castShadow = true;
+              group.add(avatar);
+              if (selfGeometry === "triangle") avatar.rotation.y = Math.PI / 6 + a;
+              else avatar.rotation.y = a;
+            }
 
             const symbolBadge = new THREE.Sprite(
               new THREE.SpriteMaterial({ map: buildLabelTexture([selfSymbol.toUpperCase()]) })
@@ -812,7 +822,7 @@
             const label = new THREE.Sprite(
               new THREE.SpriteMaterial({ map: buildLabelTexture([
                 `${pl.alias ? `${pl.alias}(${pid})` : pid} ${avatarId}`,
-                `motif=${selfGeometry}/${selfSymbol}`,
+                `motif=${selfGeometry}/${selfSymbol} x${symmetryOrder}`,
                 `l=${pl.lives ?? 0} b=${pl.bankroll ?? 0}`,
                 `bet=${pl.current_bet ?? 0} in=${pl.in_hand ? "Y" : "N"}`,
                 `${dominant}=${Number(emoVal || 0).toFixed(2)}`,
@@ -897,7 +907,7 @@
           const pids = Object.keys(t.players).sort();
           const labeled = pids.map((pid) => {
             const p = t.players[pid] || {};
-            const motif = `${String(p.self_geometry || "hexagon")[0]}:${String(p.self_symbol || "star")[0]}`;
+            const motif = `${String(p.self_geometry || "hexagon")[0]}:${String(p.self_symbol || "star")[0]}:${Number(p.self_symmetry_order || 1)}`;
             const base = p.alias ? `${p.alias}(${pid})` : pid;
             return `${base}[${motif}]`;
           });

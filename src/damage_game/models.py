@@ -143,6 +143,7 @@ class PlayerState:
     avatar_id: str = ""
     self_geometry: str = "hexagon"
     self_symbol: str = "star"
+    self_symmetry_order: int = 6
     backstory_summary: str = ""
     backstory_file: str = ""
     lives: int = 3

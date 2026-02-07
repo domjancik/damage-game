@@ -152,7 +152,7 @@
       el.error.textContent = msg;
     }
 
-    function drawMotif(canvas, geometry, symbol) {
+    function drawMotif(canvas, geometry, symbol, symmetryOrder) {
       const c = canvas.getContext("2d");
       c.imageSmoothingEnabled = false;
       c.clearRect(0, 0, 84, 84);
@@ -161,22 +161,35 @@
       c.strokeStyle = "#d6f3ea";
       c.lineWidth = 2;
       const g = String(geometry || "hexagon");
-      if (g === "circle") {
-        c.beginPath(); c.arc(42, 42, 30, 0, Math.PI * 2); c.stroke();
-      } else if (g === "triangle") {
-        c.beginPath(); c.moveTo(42, 12); c.lineTo(70, 62); c.lineTo(14, 62); c.closePath(); c.stroke();
-      } else if (g === "square") {
-        c.strokeRect(14, 14, 56, 56);
-      } else if (g === "diamond") {
-        c.beginPath(); c.moveTo(42, 12); c.lineTo(72, 42); c.lineTo(42, 72); c.lineTo(12, 42); c.closePath(); c.stroke();
-      } else if (g === "octagon") {
-        c.beginPath();
-        c.moveTo(24, 12); c.lineTo(60, 12); c.lineTo(72, 24); c.lineTo(72, 60);
-        c.lineTo(60, 72); c.lineTo(24, 72); c.lineTo(12, 60); c.lineTo(12, 24); c.closePath(); c.stroke();
-      } else {
-        c.beginPath();
-        c.moveTo(42, 10); c.lineTo(66, 24); c.lineTo(66, 52);
-        c.lineTo(42, 74); c.lineTo(18, 52); c.lineTo(18, 24); c.closePath(); c.stroke();
+      const repeats = Math.max(1, Math.min(12, Number(symmetryOrder || 1)));
+      const orbit = repeats > 1 ? 18 : 0;
+      const glyph = (cx, cy, r) => {
+        if (g === "circle") {
+          c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke();
+        } else if (g === "triangle") {
+          c.beginPath(); c.moveTo(cx, cy - r); c.lineTo(cx + r, cy + r); c.lineTo(cx - r, cy + r); c.closePath(); c.stroke();
+        } else if (g === "square") {
+          c.strokeRect(cx - r, cy - r, r * 2, r * 2);
+        } else if (g === "diamond") {
+          c.beginPath(); c.moveTo(cx, cy - r); c.lineTo(cx + r, cy); c.lineTo(cx, cy + r); c.lineTo(cx - r, cy); c.closePath(); c.stroke();
+        } else if (g === "octagon") {
+          const k = Math.max(1, Math.floor(r * 0.55));
+          c.beginPath();
+          c.moveTo(cx - r + k, cy - r); c.lineTo(cx + r - k, cy - r); c.lineTo(cx + r, cy - r + k); c.lineTo(cx + r, cy + r - k);
+          c.lineTo(cx + r - k, cy + r); c.lineTo(cx - r + k, cy + r); c.lineTo(cx - r, cy + r - k); c.lineTo(cx - r, cy - r + k);
+          c.closePath(); c.stroke();
+        } else {
+          c.beginPath();
+          c.moveTo(cx, cy - r); c.lineTo(cx + r, cy - Math.floor(r / 2)); c.lineTo(cx + r, cy + Math.floor(r / 2));
+          c.lineTo(cx, cy + r); c.lineTo(cx - r, cy + Math.floor(r / 2)); c.lineTo(cx - r, cy - Math.floor(r / 2));
+          c.closePath(); c.stroke();
+        }
+      };
+      for (let i = 0; i < repeats; i++) {
+        const a = repeats === 1 ? 0 : (Math.PI * 2 * i) / repeats;
+        const cx = 42 + Math.round(Math.cos(a) * orbit);
+        const cy = 42 + Math.round(Math.sin(a) * orbit);
+        glyph(cx, cy, repeats > 1 ? 8 : 30);
       }
       c.fillStyle = "#f7dd9b";
       const s = String(symbol || "star");
@@ -215,6 +228,7 @@
           out.avatar_id = p.avatar_id || out.avatar_id;
           out.self_geometry = p.self_geometry || out.self_geometry;
           out.self_symbol = p.self_symbol || out.self_symbol;
+          out.self_symmetry_order = p.self_symmetry_order || out.self_symmetry_order;
         }
         if (t === "backstory_created" && p.player_id === pid) {
           out.backstory_summary = p.summary || out.backstory_summary;
@@ -275,11 +289,16 @@
       el.name.textContent = alias;
       el.meta.innerHTML = [
         `avatar=${snap.avatar_id || "-"}`,
-        `motif=${snap.self_geometry || "hexagon"}/${snap.self_symbol || "star"}`,
+        `motif=${snap.self_geometry || "hexagon"}/${snap.self_symbol || "star"} x${snap.self_symmetry_order || 1}`,
         `bankroll=${snap.bankroll ?? "-"}`,
         `lives=${snap.lives ?? "-"}`,
       ].map((x) => `<span class="tag">${x}</span>`).join("");
-      drawMotif(el.avatar, snap.self_geometry || "hexagon", snap.self_symbol || "star");
+      drawMotif(
+        el.avatar,
+        snap.self_geometry || "hexagon",
+        snap.self_symbol || "star",
+        snap.self_symmetry_order || 1
+      );
 
       if (bioRes.ok) {
         const bioData = await bioRes.json();
