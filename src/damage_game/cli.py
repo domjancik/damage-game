@@ -24,6 +24,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Comma-separated per-player model map, e.g. P1=modelA,P2=modelB",
     )
     parser.add_argument("--api-key", default=os.getenv("DAMAGE_API_KEY"))
+    parser.add_argument(
+        "--image-base-url",
+        default=os.getenv("DAMAGE_IMAGE_BASE_URL", ""),
+        help="Optional OpenAI-compatible image API base URL (e.g. http://host:8000/v1)",
+    )
+    parser.add_argument(
+        "--image-model",
+        default=os.getenv("DAMAGE_IMAGE_MODEL", ""),
+        help="Optional image generation model ID (defaults to --model when image API is enabled)",
+    )
+    parser.add_argument(
+        "--image-api-key",
+        default=os.getenv("DAMAGE_IMAGE_API_KEY"),
+        help="Optional image API key (falls back to --api-key if not set)",
+    )
+    parser.add_argument(
+        "--image-size",
+        default=os.getenv("DAMAGE_IMAGE_SIZE", "512x512"),
+        help="Image size for avatar/backstory generation, e.g. 512x512",
+    )
+    parser.add_argument(
+        "--generated-art",
+        dest="enable_generated_art",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ENABLE_GENERATED_ART", False),
+        help="Generate avatar and backstory illustration images for each player",
+    )
     parser.add_argument("--players", type=int, default=4)
     parser.add_argument("--turns", type=int, default=3)
     parser.add_argument("--seed", type=int, default=int(os.getenv("DAMAGE_SEED", "42")))
@@ -134,6 +161,10 @@ def main() -> None:
             "continue_until_survivors": ["--continue-until-survivors"],
             "eliminate_on_bankroll_zero": ["--eliminate-on-bankroll-zero", "--no-eliminate-on-bankroll-zero"],
             "ongoing_table": ["--ongoing-table", "--no-ongoing-table"],
+            "enable_generated_art": ["--generated-art", "--no-generated-art"],
+            "image_base_url": ["--image-base-url"],
+            "image_model": ["--image-model"],
+            "image_size": ["--image-size"],
         },
         sys.argv[1:],
     )
@@ -185,6 +216,11 @@ def main() -> None:
             continue_until_survivors=max(0, int(args.continue_until_survivors)),
             eliminate_on_bankroll_zero=args.eliminate_on_bankroll_zero,
             ongoing_table=args.ongoing_table,
+            enable_generated_art=args.enable_generated_art,
+            image_base_url=args.image_base_url,
+            image_model=args.image_model,
+            image_api_key=args.image_api_key,
+            image_size=args.image_size,
             model_context_window=args.context_window,
             log_dir=args.log_dir,
         )

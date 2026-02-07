@@ -11,6 +11,7 @@ from pathlib import Path
 from .event_log import EventLogger
 from .model_router import ModelRouter, ModelRoutingPolicy
 from .models import ActionEnvelope, ActionKind, EmotionState, PlayerState, validate_action
+from .provider_image_openai_compat import OpenAICompatibleImageClient, OpenAICompatibleImageConfig
 from .provider_openai_compat import OpenAICompatibleClient, OpenAICompatibleConfig
 from .token_monitor import TokenMonitor
 
@@ -75,6 +76,11 @@ class SimulatorConfig:
     continue_until_survivors: int = 0
     eliminate_on_bankroll_zero: bool = False
     ongoing_table: bool = False
+    enable_generated_art: bool = False
+    image_base_url: str = ""
+    image_model: str = ""
+    image_api_key: str | None = None
+    image_size: str = "512x512"
 
 
 class DamageSimulator:
@@ -112,6 +118,18 @@ class DamageSimulator:
         self.join_counter = 0
         self.backstory_dir = Path(cfg.log_dir) / f"{self.game_id}.bios"
         self.backstory_dir.mkdir(parents=True, exist_ok=True)
+        self.art_dir = Path(cfg.log_dir) / f"{self.game_id}.art"
+        self.art_dir.mkdir(parents=True, exist_ok=True)
+        self.image_client: OpenAICompatibleImageClient | None = None
+        if cfg.enable_generated_art and cfg.image_base_url.strip():
+            image_model = cfg.image_model.strip() or cfg.model
+            self.image_client = OpenAICompatibleImageClient(
+                OpenAICompatibleImageConfig(
+                    base_url=cfg.image_base_url.strip(),
+                    model=image_model,
+                    api_key=cfg.image_api_key if cfg.image_api_key is not None else cfg.api_key,
+                )
+            )
         self.players = [
             PlayerState(
                 player_id=player_id,
@@ -162,6 +180,10 @@ class DamageSimulator:
                 "eliminate_on_bankroll_zero": self.cfg.eliminate_on_bankroll_zero,
                 "ongoing_table": self.cfg.ongoing_table,
                 "seat_target": self.seat_target,
+                "enable_generated_art": bool(self.image_client),
+                "image_base_url": self.cfg.image_base_url,
+                "image_model": (self.cfg.image_model or self.cfg.model),
+                "image_size": self.cfg.image_size,
             },
         )
         self._select_player_avatars()
@@ -353,6 +375,68 @@ class DamageSimulator:
                 "summary": actor.backstory_summary,
                 "file": str((self.backstory_dir / actor.backstory_file).name),
                 "signature": signature[:80],
+            },
+        )
+        self._generate_player_art(actor, turn)
+
+    def _generate_player_art(self, actor: PlayerState, turn: int) -> None:
+        if self.image_client is None:
+            return
+        if actor.avatar_art_file and actor.backstory_art_file:
+            return
+        image_model = (self.cfg.image_model or self.cfg.model).strip()
+        self.event_logger.write(
+            "image_generation_started",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "image_model": image_model,
+                "image_size": self.cfg.image_size,
+            },
+        )
+        alias = actor.alias or actor.player_id
+        motif = f"{actor.self_geometry}/{actor.self_symbol} x{actor.self_symmetry_order}"
+        avatar_prompt = (
+            f"Flat emblem avatar for {alias}; symmetrical geometry motif {motif}; "
+            "clean high-contrast icon, centered, no text, no watermark."
+        )
+        story_prompt = (
+            f"Illustration in Culture-inspired post-scarcity strategic drama style for {alias}. "
+            f"Backstory summary: {actor.backstory_summary}. Motif: {motif}. "
+            "Wide cinematic scene, no text, no watermark."
+        )
+        try:
+            avatar_png = self.image_client.generate_png(
+                avatar_prompt, size=self.cfg.image_size, model=image_model
+            )
+            story_png = self.image_client.generate_png(
+                story_prompt, size=self.cfg.image_size, model=image_model
+            )
+        except Exception as exc:
+            self.event_logger.write(
+                "image_generation_failed",
+                {
+                    "turn": turn,
+                    "player_id": actor.player_id,
+                    "detail": str(exc),
+                },
+            )
+            return
+        if avatar_png:
+            avatar_name = f"{actor.player_id}.avatar.png"
+            (self.art_dir / avatar_name).write_bytes(avatar_png)
+            actor.avatar_art_file = avatar_name
+        if story_png:
+            story_name = f"{actor.player_id}.backstory.png"
+            (self.art_dir / story_name).write_bytes(story_png)
+            actor.backstory_art_file = story_name
+        self.event_logger.write(
+            "image_generation_completed",
+            {
+                "turn": turn,
+                "player_id": actor.player_id,
+                "avatar_art_file": actor.avatar_art_file,
+                "backstory_art_file": actor.backstory_art_file,
             },
         )
 
@@ -1944,6 +2028,8 @@ class DamageSimulator:
             "self_symmetry_order": player.self_symmetry_order,
             "backstory_summary": player.backstory_summary,
             "backstory_file": player.backstory_file,
+            "avatar_art_file": player.avatar_art_file,
+            "backstory_art_file": player.backstory_art_file,
             "lives": player.lives,
             "bankroll": player.bankroll,
             "current_bet": player.current_bet,

@@ -58,6 +58,26 @@
       background: #173e35;
       image-rendering: pixelated;
     }
+    .art-grid {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .art-box {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fffef9;
+      padding: 6px;
+      min-height: 130px;
+    }
+    .art-box img {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid #e6d7c4;
+      display: block;
+      background: #ede4d7;
+    }
     h1, h2 { margin: 0 0 8px; }
     h1 { font-size: 20px; }
     h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
@@ -126,6 +146,16 @@
         </div>
         <h2 style="margin-top:10px;">Backstory</h2>
         <pre id="bio">loading...</pre>
+        <div class="art-grid">
+          <div class="art-box">
+            <h2>Avatar Art</h2>
+            <img id="avatarArt" alt="avatar art">
+          </div>
+          <div class="art-box">
+            <h2>Backstory Art</h2>
+            <img id="storyArt" alt="backstory art">
+          </div>
+        </div>
       </div>
       <div class="panel">
         <h2>Game History</h2>
@@ -145,6 +175,8 @@
       bio: document.getElementById("bio"),
       history: document.getElementById("history"),
       avatar: document.getElementById("avatar"),
+      avatarArt: document.getElementById("avatarArt"),
+      storyArt: document.getElementById("storyArt"),
     };
 
     function fail(msg) {
@@ -299,6 +331,14 @@
         snap.self_symbol || "star",
         snap.self_symmetry_order || 1
       );
+      const avatarSrc = `/api/player-art?game_id=${encodeURIComponent(gameId)}&player_id=${encodeURIComponent(playerId)}&kind=avatar`;
+      const storySrc = `/api/player-art?game_id=${encodeURIComponent(gameId)}&player_id=${encodeURIComponent(playerId)}&kind=backstory`;
+      el.avatarArt.src = avatarSrc;
+      el.storyArt.src = storySrc;
+      el.avatarArt.onerror = () => { el.avatarArt.style.display = "none"; };
+      el.storyArt.onerror = () => { el.storyArt.style.display = "none"; };
+      el.avatarArt.onload = () => { el.avatarArt.style.display = "block"; };
+      el.storyArt.onload = () => { el.storyArt.style.display = "block"; };
 
       if (bioRes.ok) {
         const bioData = await bioRes.json();

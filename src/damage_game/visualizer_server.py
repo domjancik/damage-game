@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .replay import bio_path, list_game_logs, list_tournament_logs, load_events, log_path
+from .replay import art_path, bio_path, list_game_logs, list_tournament_logs, load_events, log_path
 
 
 class VisualizerServer:
@@ -61,6 +61,9 @@ class VisualizerServer:
                     return
                 if path == "/api/bio":
                     self._send_bio(log_dir, parse_qs(parsed.query))
+                    return
+                if path == "/api/player-art":
+                    self._send_player_art(log_dir, parse_qs(parsed.query))
                     return
                 if path == "/api/bio-doc":
                     self._send_bio_doc(log_dir, parse_qs(parsed.query))
@@ -148,6 +151,12 @@ class VisualizerServer:
                                 "method": "GET",
                                 "query": ["game_id", "player_id"],
                                 "description": "Load markdown bio for a player in a game",
+                            },
+                            {
+                                "path": "/api/player-art",
+                                "method": "GET",
+                                "query": ["game_id", "player_id", "kind"],
+                                "description": "Load generated player art image (kind=avatar|backstory)",
                             },
                             {
                                 "path": "/api/bio-doc",
@@ -244,6 +253,33 @@ class VisualizerServer:
                 body = markdown.encode("utf-8")
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/markdown; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def _send_player_art(self, run_dir: str, qs: dict[str, list[str]]) -> None:
+                game_id = _single(qs, "game_id")
+                player_id = _single(qs, "player_id")
+                kind = (_single(qs, "kind") or "avatar").strip().lower()
+                if not game_id or not player_id:
+                    self._send_json({"error": "missing game_id or player_id"}, status=HTTPStatus.BAD_REQUEST)
+                    return
+                if kind not in {"avatar", "backstory"}:
+                    self._send_json({"error": "invalid kind"}, status=HTTPStatus.BAD_REQUEST)
+                    return
+                filename = f"{player_id}.{kind}.png"
+                path = art_path(run_dir, game_id, filename)
+                if not path.exists():
+                    self._send_json({"error": "art not found"}, status=HTTPStatus.NOT_FOUND)
+                    return
+                try:
+                    body = path.read_bytes()
+                except Exception as exc:
+                    self._send_json({"error": f"failed to read art: {exc}"}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "image/png")
                 self.send_header("Cache-Control", "no-store")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()

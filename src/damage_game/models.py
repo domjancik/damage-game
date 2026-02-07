@@ -146,6 +146,8 @@ class PlayerState:
     self_symmetry_order: int = 6
     backstory_summary: str = ""
     backstory_file: str = ""
+    avatar_art_file: str = ""
+    backstory_art_file: str = ""
     lives: int = 3
     bankroll: int = 200
     current_bet: int = 0

@@ -71,6 +71,12 @@ Rule toggles for experiments:
 uv run --python 3.11 -m damage_game.cli --no-lives --no-direct-emoter-attacks --discussion-layer
 ```
 
+Optional generated player art (avatar + backstory illustrations) via OpenAI-compatible image API:
+
+```powershell
+uv run --python 3.11 -m damage_game.cli --generated-art --image-base-url http://192.168.1.103:8000 --image-model your-image-model
+```
+
 Tournament mode (single-elimination style, 6-max/8-max tables):
 
 ```powershell
@@ -90,6 +96,7 @@ Agents now also generate backstories (Culture-style tone) at game start:
 - Stored as separate markdown files in `runs/<game_id>.bios/<player_id>.md`
 - Summary is injected into affect/chatter/action prompts to condition behavior
 - Visualizers can load full bios through `/api/bio?game_id=...&player_id=...`
+- If generated art is enabled, images are available via `/api/player-art?game_id=...&player_id=...&kind=avatar|backstory`
 
 Life risk rule:
 - `fold` avoids life loss for that hand (chips committed stay in pot).
