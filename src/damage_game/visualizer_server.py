@@ -46,6 +46,9 @@ class VisualizerServer:
                 if path == "/api/games":
                     self._send_games(log_dir)
                     return
+                if path == "/api":
+                    self._send_api_root()
+                    return
                 if path == "/api/tournaments":
                     self._send_tournaments(log_dir)
                     return
@@ -113,6 +116,35 @@ class VisualizerServer:
                     self._send_json({"error": f"game not found: {game_id}"}, status=HTTPStatus.NOT_FOUND)
                     return
                 self._send_json({"game_id": game_id, "events": events})
+
+            def _send_api_root(self) -> None:
+                self._send_json(
+                    {
+                        "resources": [
+                            {"path": "/api", "method": "GET", "description": "API index"},
+                            {"path": "/api/games", "method": "GET", "description": "List game logs"},
+                            {"path": "/api/tournaments", "method": "GET", "description": "List tournament logs"},
+                            {
+                                "path": "/api/replay",
+                                "method": "GET",
+                                "query": ["game_id"],
+                                "description": "Load full replay events for a game",
+                            },
+                            {
+                                "path": "/api/stream",
+                                "method": "GET",
+                                "query": ["game_id"],
+                                "description": "Server-sent live stream of appended events",
+                            },
+                            {
+                                "path": "/api/bio",
+                                "method": "GET",
+                                "query": ["game_id", "player_id"],
+                                "description": "Load markdown bio for a player in a game",
+                            },
+                        ]
+                    }
+                )
 
             def _stream(self, run_dir: str, qs: dict[str, list[str]]) -> None:
                 game_id = _single(qs, "game_id")

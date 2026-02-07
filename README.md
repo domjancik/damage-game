@@ -103,6 +103,7 @@ uv run --python 3.11 -m damage_game.visualizer_cli --host 127.0.0.1 --port 8787 
 ```
 
 Then open `http://127.0.0.1:8787`, select a game, and choose `Load Replay` or `Live Stream`.
+API index is available at `http://127.0.0.1:8787/api`.
 
 3D arena preview (multi-table stake pyramid):
 
