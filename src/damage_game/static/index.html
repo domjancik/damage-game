@@ -253,6 +253,7 @@
     function initPlayer(id) {
       if (!state.players[id]) {
         state.players[id] = {
+          alias: "",
           lives: 3,
           bankroll: 200,
           current_bet: 0,
@@ -278,6 +279,7 @@
     function applyPlayerSnapshot(p) {
       const x = initPlayer(p.player_id);
       x.lives = Number(p.lives ?? x.lives);
+      x.alias = String(p.alias ?? x.alias ?? "");
       x.bankroll = Number(p.bankroll ?? x.bankroll);
       x.current_bet = Number(p.current_bet ?? x.current_bet);
       x.in_hand = Boolean(p.in_hand ?? x.in_hand);
@@ -308,6 +310,11 @@
         state.players = {};
         const n = p.players || 0;
         for (let i = 1; i <= n; i++) initPlayer("P" + i);
+      }
+      if (t === "player_joined" && p.player_state) applyPlayerSnapshot(p.player_state);
+      if (t === "avatar_selected" && p.player_id) {
+        const pl = initPlayer(p.player_id);
+        if (typeof p.alias === "string") pl.alias = p.alias;
       }
       if (t === "hand_started") {
         (p.players || []).forEach(applyPlayerSnapshot);
@@ -394,9 +401,10 @@
         }).join("");
         const winnerBadge = state.winners.includes(pid) ? " <span class='badge'>winner</span>" : "";
         const thinkingBadge = p.thinking ? " <span class='badge thinking'>thinking...</span>" : "";
+        const name = p.alias ? `${p.alias} (${pid})` : pid;
         return `
           <div class="player">
-            <div><strong>${pid}</strong>${winnerBadge}${thinkingBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
+            <div><strong>${name}</strong>${winnerBadge}${thinkingBadge} lives=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="cards">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)} resist=${p.resistance_bonus.toFixed(1)}</div>
             <div class="cards">thought: ${p.thought || "-"}</div>
             <div class="cards">chatter: ${p.chatter || "-"}</div>

@@ -32,6 +32,9 @@ class TournamentConfig:
     enable_blinds: bool = False
     small_blind: int = 5
     big_blind: int = 10
+    continue_until_survivors: int = 0
+    eliminate_on_bankroll_zero: bool = False
+    ongoing_table: bool = False
     model_context_window: int = 8192
     log_dir: str = "runs"
     advance_per_table: int = 1
@@ -123,6 +126,9 @@ class TournamentRunner:
                         enable_blinds=self.cfg.enable_blinds,
                         small_blind=self.cfg.small_blind,
                         big_blind=self.cfg.big_blind,
+                        continue_until_survivors=self.cfg.continue_until_survivors,
+                        eliminate_on_bankroll_zero=self.cfg.eliminate_on_bankroll_zero,
+                        ongoing_table=self.cfg.ongoing_table,
                         model_context_window=self.cfg.model_context_window,
                         log_dir=self.cfg.log_dir,
                     )

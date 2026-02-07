@@ -350,6 +350,17 @@
             };
           }
         }
+        if (evt.type === "player_joined" && p.player_state && p.player_id) {
+          table.players[p.player_id] = {
+            ...(table.players[p.player_id] || {}),
+            ...p.player_state,
+            thinking: false,
+            thought: (table.players[p.player_id] || {}).thought || "",
+            chatter: (table.players[p.player_id] || {}).chatter || "",
+            reaction: (table.players[p.player_id] || {}).reaction || "",
+            avatar_id: p.player_state.avatar_id || (table.players[p.player_id] || {}).avatar_id || "pilot_ace",
+          };
+        }
         if (evt.type === "action_resolved" && p.player_state && p.player_id) {
           table.pot = Number(p.pot || table.pot);
           table.highBet = Number(p.current_high_bet || table.highBet);
@@ -367,6 +378,7 @@
           table.players[p.player_id] = {
             ...(table.players[p.player_id] || { player_id: p.player_id }),
             avatar_id: String(p.avatar_id || "pilot_ace"),
+            alias: String(p.alias || (table.players[p.player_id] || {}).alias || ""),
           };
         }
         if (evt.type === "thinking" && p.player_id) {
@@ -724,7 +736,7 @@
 
             const label = new THREE.Sprite(
               new THREE.SpriteMaterial({ map: buildLabelTexture([
-                `${pid} ${avatarId}`,
+                `${pl.alias ? `${pl.alias}(${pid})` : pid} ${avatarId}`,
                 `l=${pl.lives ?? 0} b=${pl.bankroll ?? 0}`,
                 `bet=${pl.current_bet ?? 0} in=${pl.in_hand ? "Y" : "N"}`,
                 `${dominant}=${Number(emoVal || 0).toFixed(2)}`,

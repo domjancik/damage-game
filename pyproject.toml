@@ -13,6 +13,7 @@ damage-sim = "damage_game.cli:main"
 damage-replay = "damage_game.replay_cli:main"
 damage-viz = "damage_game.visualizer_cli:main"
 damage-tournament = "damage_game.tournament_cli:main"
+damage-smoke = "damage_game.smoke_cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

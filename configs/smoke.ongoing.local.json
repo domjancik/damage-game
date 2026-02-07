@@ -1,0 +1,16 @@
+{
+  "mode": "sim",
+  "profile": "poker-texasholdem",
+  "base_url": "http://192.168.1.103:1234/v1",
+  "model": "qwen2.5-14b-instruct-mlx",
+  "fallback_models": [
+    "mistral-small-3.2-24b-instruct-2506-mlx"
+  ],
+  "players": 6,
+  "turns": 50,
+  "ongoing_table": true,
+  "eliminate_on_bankroll_zero": true,
+  "continue_until_survivors": 0,
+  "model_context_window": 8192,
+  "log_dir": "runs"
+}

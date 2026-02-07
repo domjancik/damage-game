@@ -434,6 +434,7 @@
     function initPlayer(id) {
       if (!state.players[id]) {
         state.players[id] = {
+          alias: "",
           lives: 3, bankroll: 200, current_bet: 0, in_hand: true, hand: [],
           will: 60, skill_affect: 55, focus: 100, stress: 0, resistance_bonus: 0,
           emotions: { fear: 0, anger: 0, shame: 0, confidence: 0, tilt: 0 },
@@ -445,6 +446,7 @@
     function applyPlayerSnapshot(p) {
       const x = initPlayer(p.player_id);
       x.lives = Number(p.lives ?? x.lives);
+      x.alias = String(p.alias ?? x.alias ?? "");
       x.bankroll = Number(p.bankroll ?? x.bankroll);
       x.current_bet = Number(p.current_bet ?? x.current_bet);
       x.in_hand = Boolean(p.in_hand ?? x.in_hand);
@@ -470,6 +472,11 @@
       if (t === "game_started") {
         state.players = {};
         for (let i = 1; i <= (p.players || 0); i++) initPlayer("P" + i);
+      }
+      if (t === "player_joined" && p.player_state) applyPlayerSnapshot(p.player_state);
+      if (t === "avatar_selected" && p.player_id) {
+        const pl = initPlayer(p.player_id);
+        if (typeof p.alias === "string") pl.alias = p.alias;
       }
       if (t === "hand_started" || t === "hand_ended") (p.players || []).forEach(applyPlayerSnapshot);
       if (t === "action_resolved" && p.player_state) applyPlayerSnapshot(p.player_state);
@@ -711,8 +718,9 @@
         const bubble = p.chatter
           ? `<div class="bubble chatter">chat: ${p.chatter}</div>`
           : (p.thought ? `<div class="bubble">thought: ${p.thought}</div>` : "");
+        const name = p.alias ? `${p.alias} (${pid})` : pid;
         seat.innerHTML = `
-          <div class="head"><strong>${pid}</strong><span>${winner}${think}</span></div>
+          <div class="head"><strong>${name}</strong><span>${winner}${think}</span></div>
             <div class="meta">life=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="meta">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)}</div>
             <div class="sprite-row">

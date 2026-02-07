@@ -52,6 +52,9 @@ class SimulatorConfig:
     enable_blinds: bool = False
     small_blind: int = 5
     big_blind: int = 10
+    continue_until_survivors: int = 0
+    eliminate_on_bankroll_zero: bool = False
+    ongoing_table: bool = False
 
 
 class DamageSimulator:
@@ -85,6 +88,8 @@ class DamageSimulator:
             player_ids = configured_ids
         else:
             player_ids = [f"P{i + 1}" for i in range(cfg.players)]
+        self.seat_target = len(player_ids)
+        self.join_counter = 0
         self.players = [
             PlayerState(
                 player_id=player_id,
@@ -131,17 +136,30 @@ class DamageSimulator:
                 "enable_blinds": self.cfg.enable_blinds,
                 "small_blind": self.cfg.small_blind,
                 "big_blind": self.cfg.big_blind,
+                "continue_until_survivors": self.cfg.continue_until_survivors,
+                "eliminate_on_bankroll_zero": self.cfg.eliminate_on_bankroll_zero,
+                "ongoing_table": self.cfg.ongoing_table,
+                "seat_target": self.seat_target,
             },
         )
         self._select_player_avatars()
 
-        for turn in range(1, self.cfg.turns + 1):
-            alive = [p for p in self.players if p.lives > 0]
-            if len(alive) <= 1:
-                break
+        turn = 1
+        while turn <= self.cfg.turns:
+            if self.cfg.ongoing_table:
+                self._refill_empty_seats(turn)
+            alive = self._active_players()
+            if not self.cfg.ongoing_table:
+                if self.cfg.continue_until_survivors > 0:
+                    target = max(1, int(self.cfg.continue_until_survivors))
+                    if len(alive) <= target:
+                        break
+                elif len(alive) <= 1:
+                    break
             print(f"\n=== Hand {turn} ===")
             self._run_hand(turn)
             self._log_turn_summary(turn)
+            turn += 1
 
         self.event_logger.write(
             "game_ended",
@@ -172,8 +190,53 @@ class DamageSimulator:
             "winners": winners,
         }
 
+    def _refill_empty_seats(self, turn: int) -> None:
+        active = len(self._active_players())
+        needed = max(0, self.seat_target - active)
+        if needed <= 0:
+            return
+        for _ in range(needed):
+            new_player = self._spawn_joiner(turn)
+            self.players.append(new_player)
+            self.event_logger.write(
+                "player_joined",
+                {
+                    "turn": turn,
+                    "player_id": new_player.player_id,
+                    "join_reason": "seat_refill",
+                    "seat_target": self.seat_target,
+                    "active_players_after_join": len(self._active_players()),
+                    "player_state": self._public_player_state(new_player),
+                },
+            )
+
+    def _spawn_joiner(self, turn: int) -> PlayerState:
+        while True:
+            self.join_counter += 1
+            player_id = f"J{self.join_counter}"
+            if self._find_player(player_id) is None:
+                break
+        player = PlayerState(
+            player_id=player_id,
+            bankroll=self.cfg.starting_bankroll,
+            will=self.rng.randint(50, 75),
+            skill_affect=self.rng.randint(45, 80),
+        )
+        player.avatar_id, player.alias = self._ask_player_for_identity(player, turn=turn)
+        self.event_logger.write(
+            "avatar_selected",
+            {
+                "turn": turn,
+                "player_id": player.player_id,
+                "avatar_id": player.avatar_id,
+                "alias": player.alias,
+                "join_reason": "seat_refill",
+            },
+        )
+        return player
+
     def _run_hand(self, turn: int) -> None:
-        participants = [p for p in self.players if p.lives > 0]
+        participants = self._active_players()
         if len(participants) <= 1:
             return
 
@@ -293,7 +356,7 @@ class DamageSimulator:
     def _affect_phase(self, participants: list[PlayerState], turn: int) -> None:
         intents: dict[str, dict] = {}
         for actor in participants:
-            if not actor.in_hand or actor.lives <= 0:
+            if not actor.in_hand or not self._is_player_active(actor):
                 continue
             intent = self._ask_player_for_affect(actor, participants, turn)
             intents[actor.player_id] = intent
@@ -589,7 +652,7 @@ class DamageSimulator:
 
     def _discussion_phase(self, participants: list[PlayerState], turn: int) -> None:
         for actor in participants:
-            if not actor.in_hand or actor.lives <= 0:
+            if not actor.in_hand or not self._is_player_active(actor):
                 continue
             chat = self._ask_player_for_chatter(actor, participants, turn)
             message = str(chat.get("message", "")).strip()
@@ -822,7 +885,7 @@ class DamageSimulator:
     def _start_street(self, participants: list[PlayerState]) -> None:
         self.current_high_bet = 0
         for p in participants:
-            if p.in_hand and p.lives > 0:
+            if p.in_hand and self._is_player_active(p):
                 p.current_bet = 0
 
     def _reveal_community(self, turn: int, street: str, count: int) -> None:
@@ -848,7 +911,7 @@ class DamageSimulator:
             raises_seen = False
             cycle += 1
             for actor in participants:
-                if not actor.in_hand or actor.lives <= 0:
+                if not actor.in_hand or not self._is_player_active(actor):
                     continue
                 action = self._ask_player_for_action(actor, participants, turn)
                 was_raise = self._apply_betting_action(actor, action, turn)
@@ -863,7 +926,7 @@ class DamageSimulator:
         observers = [
             p
             for p in participants
-            if p.player_id != trigger_actor.player_id and p.in_hand and p.lives > 0
+            if p.player_id != trigger_actor.player_id and p.in_hand and self._is_player_active(p)
         ]
         for observer in observers:
             if self.cfg.enable_offturn_self_regulate:
@@ -1266,6 +1329,20 @@ class DamageSimulator:
                     "at_risk_players": at_risk,
                 },
             )
+        if self.cfg.eliminate_on_bankroll_zero:
+            for p in participants:
+                if p.bankroll <= 0 and self._is_player_active(p):
+                    p.in_hand = False
+                    if p.lives > 0:
+                        p.lives = 0
+                    self.event_logger.write(
+                        "bankroll_eliminated",
+                        {
+                            "turn": turn,
+                            "player_id": p.player_id,
+                            "bankroll": p.bankroll,
+                        },
+                    )
         self.event_logger.write(
             "showdown",
             {
@@ -1380,7 +1457,7 @@ class DamageSimulator:
         for p in self.players:
             em = p.emotions
             print(
-                f"{p.player_id}: lives={p.lives} bankroll={p.bankroll} in_hand={p.in_hand} "
+                f"{p.player_id}({p.alias or p.player_id}): lives={p.lives} bankroll={p.bankroll} in_hand={p.in_hand} "
                 f"tempo={p.tempo} exposure={p.exposure} fear={em.fear:.2f} anger={em.anger:.2f} "
                 f"shame={em.shame:.2f} confidence={em.confidence:.2f} tilt={em.tilt:.2f}"
             )
@@ -1390,6 +1467,16 @@ class DamageSimulator:
             if p.player_id == player_id:
                 return p
         return None
+
+    def _is_player_active(self, player: PlayerState) -> bool:
+        if self.cfg.enable_lives:
+            return player.lives > 0
+        if self.cfg.eliminate_on_bankroll_zero:
+            return player.bankroll > 0
+        return True
+
+    def _active_players(self) -> list[PlayerState]:
+        return [p for p in self.players if self._is_player_active(p)]
 
     @staticmethod
     def _parse_json(text: str) -> dict:
@@ -1419,30 +1506,34 @@ class DamageSimulator:
 
     def _select_player_avatars(self) -> None:
         for actor in self.players:
-            if actor.lives <= 0:
+            if not self._is_player_active(actor):
                 continue
-            actor.avatar_id = self._ask_player_for_avatar(actor)
+            actor.avatar_id, actor.alias = self._ask_player_for_identity(actor, turn=0)
             self.event_logger.write(
                 "avatar_selected",
                 {
+                    "turn": 0,
                     "player_id": actor.player_id,
                     "avatar_id": actor.avatar_id,
+                    "alias": actor.alias,
                 },
             )
 
-    def _ask_player_for_avatar(self, actor: PlayerState) -> str:
+    def _ask_player_for_identity(self, actor: PlayerState, turn: int = 0) -> tuple[str, str]:
         fallback = AVATAR_IDS[(sum(ord(c) for c in actor.player_id) + self.cfg.seed) % len(AVATAR_IDS)]
+        fallback_alias = self._make_unique_alias(actor.player_id.lower())
         model = self._select_model_for_player(actor)
         prompt_state = {
             "player_id": actor.player_id,
             "will": actor.will,
             "skill_affect": actor.skill_affect,
             "available_avatars": AVATAR_IDS,
+            "used_aliases": sorted(self._existing_aliases(excluding_player_id=actor.player_id)),
         }
         self.event_logger.write(
             "thinking",
             {
-                "turn": 0,
+                "turn": turn,
                 "player_id": actor.player_id,
                 "status": "start",
                 "model": model,
@@ -1451,10 +1542,11 @@ class DamageSimulator:
         )
         try:
             response = self.client.chat_json(
-                system_prompt="Select a single avatar id. Return JSON only.",
+                system_prompt="Select avatar_id and unique alias. Return JSON only.",
                 user_prompt=(
-                    "Pick avatar_id from available_avatars. "
-                    "Schema: {avatar_id, summary}. "
+                    "Pick avatar_id from available_avatars and choose an alias not in used_aliases. "
+                    "Alias rules: 3-16 chars, letters/numbers/_/-. "
+                    "Schema: {avatar_id, alias, summary}. "
                     f"State: {json.dumps(prompt_state)}"
                 ),
                 max_tokens=140,
@@ -1465,25 +1557,27 @@ class DamageSimulator:
             self.event_logger.write(
                 "thinking",
                 {
-                    "turn": 0,
+                    "turn": turn,
                     "player_id": actor.player_id,
                     "status": "end",
                     "stage": "avatar",
                     "outcome": "provider_failure",
-                    "summary": f"fallback_avatar={fallback}",
+                    "summary": f"fallback_avatar={fallback} fallback_alias={fallback_alias}",
                 },
             )
-            return fallback
+            return fallback, fallback_alias
 
         parsed = self._parse_json(response.content)
         picked = str(parsed.get("avatar_id", "")).strip()
         if picked not in AVATAR_IDS:
             picked = fallback
+        alias_raw = str(parsed.get("alias", "")).strip()
+        alias = self._make_unique_alias(alias_raw or fallback_alias, excluding_player_id=actor.player_id)
         summary = str(parsed.get("summary", "")).strip()[:180]
         self.event_logger.write(
             "provider_call",
             {
-                "turn": 0,
+                "turn": turn,
                 "player_id": actor.player_id,
                 "requested_model": model,
                 "resolved_model": response.model,
@@ -1500,15 +1594,55 @@ class DamageSimulator:
         self.event_logger.write(
             "thinking",
             {
-                "turn": 0,
+                "turn": turn,
                 "player_id": actor.player_id,
                 "status": "end",
                 "stage": "avatar",
                 "outcome": "avatar_selected",
-                "summary": summary or f"picked={picked}",
+                "summary": summary or f"picked={picked} alias={alias}",
             },
         )
-        return picked
+        return picked, alias
+
+    def _existing_aliases(self, excluding_player_id: str = "") -> set[str]:
+        out: set[str] = set()
+        exclude = excluding_player_id.strip().upper()
+        for p in self.players:
+            if exclude and p.player_id.strip().upper() == exclude:
+                continue
+            if p.alias.strip():
+                out.add(p.alias.strip().lower())
+        return out
+
+    @staticmethod
+    def _sanitize_alias(value: str) -> str:
+        raw = (value or "").strip()
+        if not raw:
+            return ""
+        cleaned = []
+        for ch in raw:
+            if ch.isalnum() or ch in {"_", "-"}:
+                cleaned.append(ch)
+        s = "".join(cleaned).strip("-_")
+        if len(s) < 3:
+            return ""
+        return s[:16]
+
+    def _make_unique_alias(self, candidate: str, excluding_player_id: str = "") -> str:
+        base = self._sanitize_alias(candidate)
+        if not base:
+            base = self._sanitize_alias(f"agent_{len(self.players) + 1}") or "agent"
+        used = self._existing_aliases(excluding_player_id=excluding_player_id)
+        if base.lower() not in used:
+            return base
+        idx = 2
+        while True:
+            suffix = str(idx)
+            trimmed = base[: max(1, 16 - len(suffix))]
+            alt = f"{trimmed}{suffix}"
+            if alt.lower() not in used:
+                return alt
+            idx += 1
 
     def _select_model_for_player(self, actor: PlayerState) -> str:
         assigned = self.player_models.get(actor.player_id.upper())
@@ -1564,6 +1698,7 @@ class DamageSimulator:
     def _public_player_state(self, player: PlayerState) -> dict:
         return {
             "player_id": player.player_id,
+            "alias": player.alias,
             "avatar_id": player.avatar_id,
             "lives": player.lives,
             "bankroll": player.bankroll,

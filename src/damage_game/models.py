@@ -139,6 +139,7 @@ class EmotionState:
 @dataclass(slots=True)
 class PlayerState:
     player_id: str
+    alias: str = ""
     avatar_id: str = ""
     lives: int = 3
     bankroll: int = 200

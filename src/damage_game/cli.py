@@ -75,6 +75,26 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--small-blind", type=int, default=int(os.getenv("DAMAGE_SMALL_BLIND", "5")))
     parser.add_argument("--big-blind", type=int, default=int(os.getenv("DAMAGE_BIG_BLIND", "10")))
     parser.add_argument(
+        "--continue-until-survivors",
+        type=int,
+        default=int(os.getenv("DAMAGE_CONTINUE_UNTIL_SURVIVORS", "0")),
+        help="If >0, continue running hands until this many active survivors remain (subject to --turns cap)",
+    )
+    parser.add_argument(
+        "--eliminate-on-bankroll-zero",
+        dest="eliminate_on_bankroll_zero",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ELIMINATE_ON_BANKROLL_ZERO", False),
+        help="Treat bankroll <= 0 as elimination condition",
+    )
+    parser.add_argument(
+        "--ongoing-table",
+        dest="ongoing_table",
+        action=argparse.BooleanOptionalAction,
+        default=_env_bool("DAMAGE_ONGOING_TABLE", False),
+        help="Refill empty seats with newly joined players before each hand",
+    )
+    parser.add_argument(
         "--card-style",
         default=os.getenv("DAMAGE_CARD_STYLE", "draw5"),
         choices=["draw5", "holdem"],
@@ -111,6 +131,9 @@ def main() -> None:
             "enable_blinds": ["--blinds", "--no-blinds"],
             "small_blind": ["--small-blind"],
             "big_blind": ["--big-blind"],
+            "continue_until_survivors": ["--continue-until-survivors"],
+            "eliminate_on_bankroll_zero": ["--eliminate-on-bankroll-zero", "--no-eliminate-on-bankroll-zero"],
+            "ongoing_table": ["--ongoing-table", "--no-ongoing-table"],
         },
         sys.argv[1:],
     )
@@ -159,6 +182,9 @@ def main() -> None:
             enable_blinds=args.enable_blinds,
             small_blind=max(0, int(args.small_blind)),
             big_blind=max(0, int(args.big_blind)),
+            continue_until_survivors=max(0, int(args.continue_until_survivors)),
+            eliminate_on_bankroll_zero=args.eliminate_on_bankroll_zero,
+            ongoing_table=args.ongoing_table,
             model_context_window=args.context_window,
             log_dir=args.log_dir,
         )

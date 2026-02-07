@@ -45,6 +45,14 @@ uv run --python 3.11 -m damage_game.cli --profile poker-texasholdem
 uv run --python 3.11 -m damage_game.cli --profile poker-texasholdem --profile-file configs/poker-texasholdem.json
 ```
 
+Single-command smoke run via config file:
+
+```powershell
+uv run --python 3.11 -m damage_game.smoke_cli --config configs/smoke.sim.local.json
+```
+
+Set `"mode"` in config to `"sim"`, `"tournament"`, or `"probe"`.
+
 Rule toggles for experiments:
 
 ```powershell
@@ -63,6 +71,8 @@ Per-player model assignment:
 ```powershell
 uv run --python 3.11 -m damage_game.cli --players 4 --player-models "P1=mistral-small-3.2-24b-instruct-2506-mlx,P2=qwen2.5-14b-instruct-mlx"
 ```
+
+Players now choose unique aliases at game start (and on seat refill joins), with duplicate prevention.
 
 Life risk rule:
 - `fold` avoids life loss for that hand (chips committed stay in pot).
