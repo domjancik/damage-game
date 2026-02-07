@@ -58,6 +58,12 @@ You can override individual fields without editing the file:
 uv run --python 3.11 -m damage_game.smoke_cli --config configs/smoke.sim.local.json --set players=6 --set turns=2 --set ongoing_table=true --set model=\"qwen2.5-coder-7b\"
 ```
 
+Interactive model picker (terminal UI prompt):
+
+```powershell
+uv run --python 3.11 -m damage_game.smoke_cli --config configs/smoke.sim.local.json --pick-models
+```
+
 Rule toggles for experiments:
 
 ```powershell

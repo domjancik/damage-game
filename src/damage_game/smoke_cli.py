@@ -17,6 +17,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", required=True, help="Path to smoke JSON config")
     parser.add_argument("--mode", choices=["sim", "tournament", "probe"], default="", help="Optional override mode")
     parser.add_argument(
+        "--pick-models",
+        action="store_true",
+        help="Interactive TUI-like model picker for primary + fallback models before run",
+    )
+    parser.add_argument(
         "--set",
         dest="overrides",
         action="append",
@@ -117,10 +122,77 @@ def _apply_overrides(cfg: dict[str, Any], overrides: list[str]) -> dict[str, Any
     return out
 
 
+def _pick_models_interactive(cfg: dict[str, Any]) -> dict[str, Any]:
+    base_url = str(cfg.get("base_url", "http://localhost:1234/v1"))
+    current_model = str(cfg.get("model", "")).strip()
+    api_key = cfg.get("api_key")
+    client = OpenAICompatibleClient(OpenAICompatibleConfig(base_url=base_url, model=current_model, api_key=api_key))
+    models = client.list_models()
+    if not models:
+        print("No models available from endpoint; keeping configured model values.")
+        return cfg
+
+    print("\nAvailable models:")
+    for i, model in enumerate(models, start=1):
+        marker = " (current)" if model == current_model else ""
+        print(f"{i:>2}. {model}{marker}")
+
+    def _idx(prompt: str, default: int) -> int:
+        raw = input(prompt).strip()
+        if not raw:
+            return default
+        try:
+            i = int(raw)
+        except Exception:
+            return default
+        if i < 1 or i > len(models):
+            return default
+        return i
+
+    default_primary = models.index(current_model) + 1 if current_model in models else 1
+    primary_idx = _idx(f"\nPrimary model [default {default_primary}]: ", default_primary)
+    primary_model = models[primary_idx - 1]
+
+    print("Fallback models: enter comma-separated numbers, empty for none.")
+    fallback_raw = input("Fallback selections: ").strip()
+    fallback_models: list[str] = []
+    if fallback_raw:
+        seen: set[str] = set()
+        for token in fallback_raw.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                i = int(token)
+            except Exception:
+                continue
+            if i < 1 or i > len(models):
+                continue
+            model = models[i - 1]
+            if model == primary_model:
+                continue
+            if model in seen:
+                continue
+            seen.add(model)
+            fallback_models.append(model)
+
+    out = dict(cfg)
+    out["model"] = primary_model
+    out["fallback_models"] = fallback_models
+    print(f"Selected primary={primary_model}")
+    if fallback_models:
+        print(f"Selected fallback={','.join(fallback_models)}")
+    else:
+        print("Selected fallback=<none>")
+    return out
+
+
 def main() -> None:
     args = _parser().parse_args()
     raw = _load_json(Path(args.config))
     cfg = _normalize_common(_apply_overrides(_merge_profile(raw), list(args.overrides or [])))
+    if args.pick_models:
+        cfg = _pick_models_interactive(cfg)
     mode = (args.mode or str(cfg.get("mode", "sim"))).strip().lower()
 
     if mode == "probe":
