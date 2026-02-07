@@ -29,6 +29,7 @@ class VisualizerServer:
         static_index = Path(__file__).with_name("static").joinpath("index.html")
         static_table = Path(__file__).with_name("static").joinpath("table.html")
         static_arena = Path(__file__).with_name("static").joinpath("arena.html")
+        static_bio = Path(__file__).with_name("static").joinpath("bio.html")
 
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
@@ -42,6 +43,9 @@ class VisualizerServer:
                     return
                 if path == "/arena":
                     self._send_index(static_arena)
+                    return
+                if path == "/bio":
+                    self._send_index(static_bio)
                     return
                 if path == "/api/games":
                     self._send_games(log_dir)

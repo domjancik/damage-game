@@ -801,10 +801,10 @@
           : (p.thought ? `<div class="bubble">thought: ${p.thought}</div>` : "");
         const name = p.alias ? `${p.alias} (${pid})` : pid;
         const bioUrl = state.gameId
-          ? `/api/bio-doc?game_id=${encodeURIComponent(state.gameId)}&player_id=${encodeURIComponent(pid)}`
+          ? `/bio?game_id=${encodeURIComponent(state.gameId)}&player_id=${encodeURIComponent(pid)}`
           : "";
         const bioLink = bioUrl
-          ? `<a class="home" target="_blank" rel="noopener" href="${bioUrl}">Open Bio Doc</a>`
+          ? `<a class="home" target="_blank" rel="noopener" href="${bioUrl}">Open Bio Page</a>`
           : "";
         seat.innerHTML = `
           <div class="head"><strong>${name}</strong><span>${winner}${think}</span></div>

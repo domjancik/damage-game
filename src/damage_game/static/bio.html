@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Damage Player Bio</title>
+  <style>
+    :root {
+      --bg: #f3ebdf;
+      --ink: #152521;
+      --muted: #516b65;
+      --line: #d2c0ab;
+      --card: #fffaf2;
+      --accent: #cf5a37;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 10%, #ffd3a7 0%, transparent 30%),
+        radial-gradient(circle at 85% 8%, #a6ddd4 0%, transparent 30%),
+        var(--bg);
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 16px; }
+    .top {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--card);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .head {
+      display: grid;
+      grid-template-columns: 84px 1fr;
+      gap: 10px;
+      align-items: center;
+    }
+    .avatar {
+      width: 84px;
+      height: 84px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #173e35;
+      image-rendering: pixelated;
+    }
+    h1, h2 { margin: 0 0 8px; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    .meta { font-family: "IBM Plex Mono", "Consolas", monospace; font-size: 12px; color: #304540; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    .history {
+      max-height: 68vh;
+      overflow: auto;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      background: #fffdf8;
+      padding: 8px;
+      font-family: "IBM Plex Mono", "Consolas", monospace;
+      font-size: 12px;
+    }
+    .ev {
+      border-bottom: 1px solid #efe2d2;
+      margin-bottom: 6px;
+      padding-bottom: 6px;
+    }
+    .ev:last-child { border-bottom: 0; margin-bottom: 0; }
+    .tag {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 1px 8px;
+      background: #fde5cb;
+      color: #6b3702;
+      font-size: 11px;
+      margin-left: 6px;
+    }
+    .err {
+      border: 1px solid #dfa59b;
+      background: #fff2ee;
+      color: #7d2717;
+      padding: 10px;
+      border-radius: 10px;
+    }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div id="crumb">loading...</div>
+      <a href="/table">back to table</a>
+    </div>
+    <div id="error" class="err" style="display:none;"></div>
+    <div class="grid">
+      <div class="panel">
+        <h2>Identity</h2>
+        <div class="head">
+          <canvas id="avatar" class="avatar" width="84" height="84"></canvas>
+          <div>
+            <h1 id="name">-</h1>
+            <div class="meta" id="meta">-</div>
+          </div>
+        </div>
+        <h2 style="margin-top:10px;">Backstory</h2>
+        <pre id="bio">loading...</pre>
+      </div>
+      <div class="panel">
+        <h2>Game History</h2>
+        <div id="history" class="history">loading...</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    const qp = new URLSearchParams(location.search);
+    const gameId = qp.get("game_id") || "";
+    const playerId = qp.get("player_id") || "";
+    const el = {
+      crumb: document.getElementById("crumb"),
+      error: document.getElementById("error"),
+      name: document.getElementById("name"),
+      meta: document.getElementById("meta"),
+      bio: document.getElementById("bio"),
+      history: document.getElementById("history"),
+      avatar: document.getElementById("avatar"),
+    };
+
+    function fail(msg) {
+      el.error.style.display = "";
+      el.error.textContent = msg;
+    }
+
+    function drawMotif(canvas, geometry, symbol) {
+      const c = canvas.getContext("2d");
+      c.imageSmoothingEnabled = false;
+      c.clearRect(0, 0, 84, 84);
+      c.fillStyle = "#173f35";
+      c.fillRect(0, 0, 84, 84);
+      c.strokeStyle = "#d6f3ea";
+      c.lineWidth = 2;
+      const g = String(geometry || "hexagon");
+      if (g === "circle") {
+        c.beginPath(); c.arc(42, 42, 30, 0, Math.PI * 2); c.stroke();
+      } else if (g === "triangle") {
+        c.beginPath(); c.moveTo(42, 12); c.lineTo(70, 62); c.lineTo(14, 62); c.closePath(); c.stroke();
+      } else if (g === "square") {
+        c.strokeRect(14, 14, 56, 56);
+      } else if (g === "diamond") {
+        c.beginPath(); c.moveTo(42, 12); c.lineTo(72, 42); c.lineTo(42, 72); c.lineTo(12, 42); c.closePath(); c.stroke();
+      } else if (g === "octagon") {
+        c.beginPath();
+        c.moveTo(24, 12); c.lineTo(60, 12); c.lineTo(72, 24); c.lineTo(72, 60);
+        c.lineTo(60, 72); c.lineTo(24, 72); c.lineTo(12, 60); c.lineTo(12, 24); c.closePath(); c.stroke();
+      } else {
+        c.beginPath();
+        c.moveTo(42, 10); c.lineTo(66, 24); c.lineTo(66, 52);
+        c.lineTo(42, 74); c.lineTo(18, 52); c.lineTo(18, 24); c.closePath(); c.stroke();
+      }
+      c.fillStyle = "#f7dd9b";
+      const s = String(symbol || "star");
+      if (s === "cross") {
+        c.fillRect(39, 30, 6, 24); c.fillRect(30, 39, 24, 6);
+      } else if (s === "node") {
+        c.fillRect(39, 39, 6, 6);
+      } else if (s === "wave") {
+        c.fillRect(30, 35, 6, 6); c.fillRect(39, 43, 6, 6); c.fillRect(48, 35, 6, 6);
+      } else if (s === "eye") {
+        c.fillRect(29, 39, 26, 6); c.fillRect(40, 36, 4, 12);
+      } else if (s === "orbit") {
+        c.strokeStyle = "#f7dd9b"; c.beginPath(); c.arc(42, 42, 13, 0, Math.PI * 2); c.stroke(); c.fillRect(53, 40, 5, 5);
+      } else if (s === "sun") {
+        c.fillRect(39, 39, 6, 6); c.fillRect(40, 28, 4, 8); c.fillRect(40, 48, 4, 8); c.fillRect(28, 40, 8, 4); c.fillRect(48, 40, 8, 4);
+      } else if (s === "spiral") {
+        c.fillRect(34, 34, 16, 4); c.fillRect(46, 34, 4, 16); c.fillRect(30, 46, 16, 4); c.fillRect(30, 38, 4, 8);
+      } else {
+        c.fillRect(41, 26, 2, 32); c.fillRect(26, 41, 32, 2); c.fillRect(33, 33, 18, 18);
+      }
+    }
+
+    function snapshotForPlayer(events, pid) {
+      const out = {};
+      for (const evt of events) {
+        const t = evt.type;
+        const p = evt.payload || {};
+        const players = Array.isArray(p.players) ? p.players : [];
+        if (t === "action_resolved" && p.player_id === pid && p.player_state) Object.assign(out, p.player_state);
+        if ((t === "hand_started" || t === "hand_ended")) {
+          for (const pl of players) if (pl.player_id === pid) Object.assign(out, pl);
+        }
+        if (t === "player_joined" && p.player_state && p.player_state.player_id === pid) Object.assign(out, p.player_state);
+        if (t === "avatar_selected" && p.player_id === pid) {
+          out.alias = p.alias || out.alias;
+          out.avatar_id = p.avatar_id || out.avatar_id;
+          out.self_geometry = p.self_geometry || out.self_geometry;
+          out.self_symbol = p.self_symbol || out.self_symbol;
+        }
+        if (t === "backstory_created" && p.player_id === pid) {
+          out.backstory_summary = p.summary || out.backstory_summary;
+          out.backstory_file = p.file || out.backstory_file;
+        }
+        if (t === "game_ended" && Array.isArray(p.final_state)) {
+          for (const fs of p.final_state) if (fs.player_id === pid) Object.assign(out, fs);
+        }
+      }
+      return out;
+    }
+
+    function renderHistory(events, pid) {
+      const lines = [];
+      for (const evt of events) {
+        const t = evt.type;
+        const p = evt.payload || {};
+        const ts = evt.ts || "";
+        if (t === "action_resolved" && p.player_id === pid) lines.push(`${ts} action=${p.kind} pot=${p.pot}`);
+        if (t === "thinking" && p.player_id === pid && p.status === "end" && p.summary) lines.push(`${ts} thought: ${p.summary}`);
+        if (t === "chatter_posted" && p.player_id === pid) lines.push(`${ts} chatter -> ${p.target_player_id}: ${p.message || ""}`);
+        if (t === "chatter_evaluated" && (p.speaker_id === pid || p.target_player_id === pid)) {
+          lines.push(`${ts} chatter_eval impact=${p.impact_emotion} delta=${p.applied_delta}`);
+        }
+        if ((t === "life_lost" || t === "player_eliminated") && p.player_id === pid) lines.push(`${ts} ${t} remaining_lives=${p.remaining_lives}`);
+        if (t === "showdown" && Array.isArray(p.winners)) {
+          const win = p.winners.includes(pid) ? "won" : "lost";
+          lines.push(`${ts} showdown ${win} pot=${p.pot}`);
+        }
+        if (t === "backstory_created" && p.player_id === pid) lines.push(`${ts} backstory_created`);
+      }
+      if (!lines.length) {
+        el.history.textContent = "No player-specific events captured.";
+        return;
+      }
+      el.history.innerHTML = lines.map((line) => `<div class="ev">${line}</div>`).join("");
+    }
+
+    async function run() {
+      if (!gameId || !playerId) {
+        fail("Missing game_id or player_id in URL query.");
+        return;
+      }
+      el.crumb.textContent = `game=${gameId} | player=${playerId}`;
+      const [bioRes, replayRes] = await Promise.all([
+        fetch(`/api/bio?game_id=${encodeURIComponent(gameId)}&player_id=${encodeURIComponent(playerId)}`),
+        fetch(`/api/replay?game_id=${encodeURIComponent(gameId)}`),
+      ]);
+      if (!replayRes.ok) {
+        fail(`Replay not found for game ${gameId}`);
+        return;
+      }
+      const replay = await replayRes.json();
+      const events = Array.isArray(replay.events) ? replay.events : [];
+      const snap = snapshotForPlayer(events, playerId);
+
+      const alias = snap.alias ? `${snap.alias} (${playerId})` : playerId;
+      el.name.textContent = alias;
+      el.meta.innerHTML = [
+        `avatar=${snap.avatar_id || "-"}`,
+        `motif=${snap.self_geometry || "hexagon"}/${snap.self_symbol || "star"}`,
+        `bankroll=${snap.bankroll ?? "-"}`,
+        `lives=${snap.lives ?? "-"}`,
+      ].map((x) => `<span class="tag">${x}</span>`).join("");
+      drawMotif(el.avatar, snap.self_geometry || "hexagon", snap.self_symbol || "star");
+
+      if (bioRes.ok) {
+        const bioData = await bioRes.json();
+        el.bio.textContent = bioData.markdown || "No bio markdown.";
+      } else {
+        el.bio.textContent = "Bio markdown unavailable.";
+      }
+      renderHistory(events, playerId);
+    }
+
+    run().catch((err) => fail(`Failed to load bio page: ${String(err)}`));
+  </script>
+</body>
+</html>
