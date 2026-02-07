@@ -800,12 +800,19 @@
           ? `<div class="bubble chatter">chat: ${p.chatter}</div>`
           : (p.thought ? `<div class="bubble">thought: ${p.thought}</div>` : "");
         const name = p.alias ? `${p.alias} (${pid})` : pid;
+        const bioUrl = state.gameId
+          ? `/api/bio-doc?game_id=${encodeURIComponent(state.gameId)}&player_id=${encodeURIComponent(pid)}`
+          : "";
+        const bioLink = bioUrl
+          ? `<a class="home" target="_blank" rel="noopener" href="${bioUrl}">Open Bio Doc</a>`
+          : "";
         seat.innerHTML = `
           <div class="head"><strong>${name}</strong><span>${winner}${think}</span></div>
             <div class="meta">life=${p.lives} bankroll=${p.bankroll} bet=${p.current_bet} in_hand=${p.in_hand}</div>
             <div class="meta">will=${p.will} skill=${p.skill_affect} focus=${p.focus.toFixed(1)} stress=${p.stress.toFixed(1)}</div>
             <div class="meta">motif=${p.self_geometry}:${p.self_symbol}</div>
             <div class="meta">bio=${p.backstory_summary || "-"}</div>
+            <div class="meta">${bioLink}</div>
             <div class="sprite-row">
               <div class="sprite-wrap"><canvas class="sprite" width="48" height="48"></canvas>${p.thinking ? "<div class='think-ring'></div>" : ""}</div>
               <div class="bars">

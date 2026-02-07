@@ -58,6 +58,9 @@ class VisualizerServer:
                 if path == "/api/bio":
                     self._send_bio(log_dir, parse_qs(parsed.query))
                     return
+                if path == "/api/bio-doc":
+                    self._send_bio_doc(log_dir, parse_qs(parsed.query))
+                    return
                 if path == "/api/stream":
                     self._stream(log_dir, parse_qs(parsed.query))
                     return
@@ -142,6 +145,12 @@ class VisualizerServer:
                                 "query": ["game_id", "player_id"],
                                 "description": "Load markdown bio for a player in a game",
                             },
+                            {
+                                "path": "/api/bio-doc",
+                                "method": "GET",
+                                "query": ["game_id", "player_id"],
+                                "description": "Open raw markdown bio document for a player",
+                            },
                         ]
                     }
                 )
@@ -212,6 +221,29 @@ class VisualizerServer:
                         "path": str(path.name),
                     }
                 )
+
+            def _send_bio_doc(self, run_dir: str, qs: dict[str, list[str]]) -> None:
+                game_id = _single(qs, "game_id")
+                player_id = _single(qs, "player_id")
+                if not game_id or not player_id:
+                    self.send_error(HTTPStatus.BAD_REQUEST, "missing game_id or player_id")
+                    return
+                path = bio_path(run_dir, game_id, player_id)
+                if not path.exists():
+                    self.send_error(HTTPStatus.NOT_FOUND, f"bio not found for {player_id} in {game_id}")
+                    return
+                try:
+                    markdown = path.read_text(encoding="utf-8")
+                except Exception as exc:
+                    self.send_error(HTTPStatus.INTERNAL_SERVER_ERROR, f"failed to read bio: {exc}")
+                    return
+                body = markdown.encode("utf-8")
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/markdown; charset=utf-8")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
 
             def _send_json(self, payload: dict, status: HTTPStatus = HTTPStatus.OK) -> None:
                 body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
